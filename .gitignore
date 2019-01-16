@@ -49,12 +49,7 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .output/
-ESP8266_RTOS_SDK/
-ESP8266_RTOS_SDK_1.5.0/bin/
-esp8266-rtos-sample-code-master/
-Release/bin/eagle.flash.bin
-Release/bin/eagle.irom0text.bin
-Release/bin/html.bin
+Release/
 Release - zhandi/
 /Q_Wifi_Source/lib/
 /Q_Wifi_Source/net_handler/
