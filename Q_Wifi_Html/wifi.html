@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="renderer" content="webkit|ie-comp|ie-stand">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>Wifi - QSWTECK</title>
+<link href="./style.css" rel="stylesheet" type="text/css" />
+<script src="./zepto.js"></script>
+<script src="./user.js"></script> 
+</head>
+
+<body>
+<div id="page_hd">
+Wifi设置
+<div id="page_sel">[&equiv;]</div>
+</div>
+
+<div class="guide_line">
+本页用以设置物联模块希望连接的上级WIFI信息。<br>
+注：当模块连接到无线路由器之后，模块自身的Ap信道有可能被改变，手机需要清除连接信息，重新连接模块AP。
+</div>
+
+<div class="tip_line" id="web_tip" style="display:none"></div>
+
+<center>
+<div class="form_line">
+<table class="info_table" width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr><td colspan="2">[WIFI连接信息]</td></tr>
+<tr>
+<td>
+当前SSID记录：<br>
+有效连接：<br>
+信号强度：<br>
+连接状态：<br>
+IP地址：<br>
+网关：<br>
+DNS1：<br>
+DNS2： 
+</td>
+<td align="right">
+${wifi_ssid}<br>
+${wifi_ssid_v}<br>
+${wifi_rssi}dBm<br>
+${wifi_status}<br>
+${wifi_ip}<br>
+${wifi_gw}<br>
+${wifi_dns1}<br>
+${wifi_dns2}
+</td></tr>
+</table>
+</div>
+</center>
+
+<form action="./wifi.set" method="post">
+<div class="form_line">
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td width="1%" align="right" nowrap><div class="input_name">SSID:</div></td>
+    <td><input name="wifi_ssid" type="text" value="" class="input_text" placeholder="输入希望连接的WIFI SSID"></td>
+  </tr>
+  <tr>
+    <td align="right" nowrap><div class="input_name">密码:</div></td>
+    <td><input name="wifi_pw" type="text" value="" class="input_text" placeholder="输入登录密码"></td>
+  </tr>
+  <tr>
+    <td colspan="2"></td>
+    </tr>
+</table>
+</div>
+<div class="btn_line"><input type="submit" class="btn_ok" value="确定"></div>
+</form>
+
+<script type="text/javascript">
+authHandler();
+menuHandler();		
+txtHandler();
+</script>
+</body>
+</html>
+<!--END-->

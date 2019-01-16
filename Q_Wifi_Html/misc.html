@@ -1,0 +1,185 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="renderer" content="webkit|ie-comp|ie-stand">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>Misc - QSWTECK</title>
+<link href="./style.css" rel="stylesheet" type="text/css" />
+<script src="./zepto.js"></script>
+<script src="./user.js"></script> 
+</head>
+
+<body>
+<div id="page_hd">
+杂项设置
+<div id="page_sel">[&equiv;]</div>
+</div>
+
+<div class="guide_line">
+本页用以设置一些杂项功能。<span onClick="$('#help').removeClass('hidden')">[点击展开]</span><br>
+	<div id="help" class="hidden">
+	【PWM】ESP8266的PWM功能很弱，在本系统中，当某个IO设置为PWM后，可以通过绑定的变量来设置千分制的占空比或周期。<br>
+	PWM默认周期，表示的是PWM一个脉冲和随后低电平的长度总值。取值范围1-40000 x 0.1mS。<br>
+	PWM默认占空比，表示的是PWM的周期绑定到变量时，使用的默认脉冲占空比。取值范围1-1000<br>
+	【ADC】ESP8266的IO6可以作为ADC使用，采样值范围0-1000mV，实际精度为10位。<br>
+	因子/偏移值：假设因子为20，偏移值为100，则实际采样值除以20%，再加上偏移值100，得到最终计算结果。偏移值可以为负数。<br>
+	容差：假设容差为10，则ADC采样及计算后的值，变化超过10%才会被写入变量。假设容差为0，则计算结果只要改变就写入变量。
+	</div>
+</div>
+
+<div class="tip_line" id="web_tip" style="display:none"></div>
+
+<form action="./misc.set" method="post" onsubmit="return checkForm()">
+
+<div class="config_line">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" class="config_table">
+<tr class="config_tr"><th width="45%">调试支持</th>
+<td width="35%">
+  <select class="config_sel" name="debug_en">
+    <option value="0">关闭</option>
+    <option value="1">开启</option>
+	</select>
+</td>
+<td></td>
+</tr>
+</table>
+</div>
+
+<div class="config_line">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" class="config_table">
+<tr class="config_tr"><th width="45%">PWM默认周期</th>
+<td width="35%">
+<input name="pwm_period" type="text" class="config_text" value="${misc_pwm_period}" size="10">
+</td>
+<td>
+0.1mS
+</td>
+</tr>
+<tr class="config_tr"><th>PWM默认占空比</th>
+<td>
+<input name="pwm_duty" type="text" class="config_text" value="${misc_pwm_duty}" size="10">
+</td>
+<td>
+‰
+</td>
+</tr>
+</table>
+</div>
+	
+<div class="config_line">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" class="config_table">		
+<tr class="config_tr"><th width="45%">ADC使能</th>
+<td width="35%">
+  <select class="config_sel" name="adc_en">
+    <option value="0">关闭</option>
+    <option value="1">开启</option>
+	</select>
+</td>
+<td>
+</td>
+</tr>
+
+<tr class="config_tr"><th>因子</th>
+<td>
+<input name="adc_factor" type="text" class="config_text" value="${misc_adc_factor}" size="10">
+</td>
+<td>%
+</td>
+</tr>
+
+<tr class="config_tr"><th>偏移值</th>
+<td>
+<input name="adc_offset" type="text" class="config_text" value="${misc_adc_offset}" size="10">
+</td>
+<td>
+</td>
+</tr>
+
+<tr class="config_tr"><th>容差</th>
+<td>
+<input name="adc_tole" type="text" class="config_text" value="${misc_adc_tole}" size="10">
+</td>
+<td>%
+</td>
+</tr>
+
+<tr class="config_tr" id="adc_var_tags"><th>绑定变量</th>
+<td>
+<input type="text" class="config_text" value="${misc_adc_p}" size="2" maxlength="4" name="adc_ptag">.
+<input type="text" class="config_text" value="${misc_adc_v}" size="2" maxlength="4" name="adc_vtag">
+</td>
+<td>
+</td>
+</tr>
+
+<tr class="config_tr"><th>采样周期</th>
+<td>
+  <select class="config_sel" name="adc_period">
+    <option value="0">无</option>
+    <option value="1">0.5秒</option> 
+    <option value="2">1秒</option>
+    <option value="3">5秒</option>
+    <option value="4">10秒</option>
+    <option value="5">1分钟</option>
+    <option value="6">10分钟</option>
+    <option value="7">30分钟</option>         
+  </select>
+</td>
+<td>
+</td>
+</tr>
+
+</table>
+</div>
+
+<div class="btn_line">
+<input type="submit" class="btn_ok" value="确定"></div>
+</form>
+<br>
+
+<script type="text/javascript">
+authHandler();
+menuHandler();
+txtHandler();
+
+//默认选项
+$("[name='debug_en']").val(${misc_debug_en});
+$("[name='adc_period']").val(${misc_adc_period});
+$("[name='adc_en']").val(${misc_adc_en});
+
+function checkForm()
+{
+	var period=parseInt($("[name='pwm_period']").val());
+	var duty=parseInt($("[name='pwm_duty']").val());
+	var factor=parseInt($("[name='adc_factor']").val());
+	var offset=parseInt($("[name='adc_offset']").val());
+	var tole=parseInt($("[name='adc_tole']").val());
+	
+	if(isNaN($("[name='pwm_period']").val())){alert("PWM周期必须为数字！");return false;}
+	if(isNaN($("[name='pwm_duty']").val())){alert("PWM占空比必须为数字！");return false;}
+	if(isNaN($("[name='adc_factor']").val())){alert("因子必须为数字！");return false;}
+	if(isNaN($("[name='adc_offset']").val())){alert("偏移值必须为数字！");return false;}
+	if(isNaN($("[name='adc_tole']").val())){alert("容差必须为数字！");return false;}
+	
+	if(period==0 || period>4000){alert("PWM周期范围必须为1-4000mS！");return false;}
+	if(duty>1000){alert("PWM占空比范围必须为0-1000！");return false;}
+	if(factor<=0){alert("因子不允许为0或负数！");return false;}
+	if(offset<-32768 || offset>32767){alert("偏移值范围必须为-32768-32767！");return false;}
+	if(tole<0 || tole>99){alert("容差范围必须为0-99！");return false;}
+	
+	//合并tag
+	var ProdTags=$("[name='adc_ptag']").val();
+	var VarTags=$("[name='adc_vtag']").val();
+
+	$("[name='adc_ptag']").remove();
+	$("[name='adc_vtag']").remove();	
+	$('#adc_var_tags').append("<input type='hidden' name='adc_var_tags' value='"+ProdTags+VarTags+"'>");
+	
+	return true;
+}
+	
+</script>
+</body>
+</html>
+<!--END-->

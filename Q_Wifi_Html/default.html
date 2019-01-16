@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="renderer" content="webkit|ie-comp|ie-stand">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>Login - QSWTECK</title>
+<link href="./style.css" rel="stylesheet" type="text/css" />
+<script src="./zepto.js"></script>
+<script src="./user.js"></script> 
+</head>
+
+<body>
+<div id="page_hd">登录</div>
+
+<div align="center" class="img_logo"><img src="./logo.png" width="20%"></div>
+
+<div class="tip_line" id="web_tip" style="display:none"></div>
+
+<form action="./login.set" method="post">
+<div class="form_line">
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td width="1%" align="right" nowrap><div class="input_name">序列号:</div></td>
+    <td><div class="info_text">${dut_id}</div></td>
+  </tr>
+  <tr>
+    <td align="right" nowrap><div class="input_name">版本号:</div></td>
+    <td><div class="info_text">${soft_ver}</div></td>
+  </tr>
+  <tr>
+    <td align="right" nowrap><div class="input_name">密码:</div></td>
+    <td><input name="pw" type="password" value="" class="input_pw" placeholder="输入登录密码"></td>
+  </tr>
+  <tr>
+    <td align="right" nowrap><div class="input_name">授权码:</div></td>
+    <td><input name="reg_sn" type="text" value="${reg_sn}" class="input_text" placeholder="请向销售商获取" ${reg_sn_dis}="disabled"></td>
+  </tr>  
+  <tr>
+    <td colspan="2"></td>
+    </tr>
+</table>
+</div>
+
+<div class="btn_line"><input type="submit" class="btn_ok" value="确定"></div>
+<input id="auth_num" name="auth_num" type="hidden" value="">
+</form>
+<br>
+<!--
+<form action="./open.set" method="post">
+<input type="submit" value="开锁">
+<input name="op" type="hidden" value="1">
+</form>
+-->
+
+<script type="text/javascript">
+var auth_num=getRand();
+$("#auth_num").val(auth_num);
+setCookie("auth_num",auth_num,"h1");
+txtHandler();
+</script>
+</body>
+</html>
+<!--END-->
