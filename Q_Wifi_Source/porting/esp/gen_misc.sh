@@ -16,16 +16,16 @@ cd ../../
 
 #make clean
 
-#ÎŞboot 1024kÄ£Ê½
+#æ— boot 1024kæ¨¡å¼
 make BOOT=none APP=0 SPI_SPEED=40 SPI_MODE=DIO SPI_SIZE_MAP=4
 
 cd $pwd
 
-#BOOT= new:ÔÆ¶ËÉı¼¶£¬none:ÎŞboot
-#APP= 0:Éú³Éeagle.flash.binºÍeagle.irom0text.bin²»Ö§³ÖÔÆ¶ËÉı¼¶
-#APP= 1:Éú³Éuser1.bin
-#APP= 2:Éú³Éuser2.bin
-#SPI_SPEED£¬SPI_MODEÒ»°ã²»¶¯
+#BOOT= new:äº‘ç«¯å‡çº§ï¼Œnone:æ— boot
+#APP= 0:ç”Ÿæˆeagle.flash.binå’Œeagle.irom0text.binä¸æ”¯æŒäº‘ç«¯å‡çº§
+#APP= 1:ç”Ÿæˆuser1.bin
+#APP= 2:ç”Ÿæˆuser2.bin
+#SPI_SPEEDï¼ŒSPI_MODEä¸€èˆ¬ä¸åŠ¨
 #SPI_SIZE_MAP= 0:flash size 512K
 #SPI_SIZE_MAP= 2:flash size 1024K
 #SPI_SIZE_MAP= 3:flash size 2048K
