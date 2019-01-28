@@ -8,7 +8,7 @@ static void AdcVar_TimerCB(void *pTimer)
 	WE_AIN_CONFIG AinConfig;				
 	QDB_GetValue(SDN_HWC,HWC_ADC_CONF,0,&AinConfig);
 
-	if(AinConfig.AdcMode && AinConfig.PeriodId<TPT_MAX)
+	if(AinConfig.AdcMode && PeriodIdx2Ms(AinConfig.PeriodIdx))
 	{
 		static u16 AdcVid=0;
 		TVAR32 New=EspHwAdcRead();//最大值1024，对应1v
@@ -53,14 +53,14 @@ void AdcVar_Init(void)
 	WE_AIN_CONFIG AinConfig;				
 	QDB_GetValue(SDN_HWC,HWC_ADC_CONF,0,&AinConfig);
 
-	if(AinConfig.AdcMode && AinConfig.PeriodId<TPT_MAX)
+	if(AinConfig.AdcMode && PeriodIdx2Ms(AinConfig.PeriodIdx))
 	{
 		AdcVar_TimerCB(&gAdcVarTimer);//第一遍，作为初始化
 		
 		//根据更新实现，设置系统定时器
 		OS_TimerDeinit(&gAdcVarTimer);
 		OS_TimerSetCallback(&gAdcVarTimer,AdcVar_TimerCB,&gAdcVarTimer);
-		OS_TimerInit(&gAdcVarTimer,gTimeMsMap[AinConfig.PeriodId],TRUE);	
+		OS_TimerInit(&gAdcVarTimer,PeriodIdx2Ms(AinConfig.PeriodIdx),TRUE);	
 	}
 
 

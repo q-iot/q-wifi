@@ -141,7 +141,7 @@ INCLUDES := $(INCLUDES) -I $(PDIR)include \
 						-I $(PDIR)/porting/esp/include \
 						-I $(PDIR)/porting/esp/driver \
 						-I $(PDIR)/common/Database \
-						-I $(PDIR)/common/Gui \
+						-I $(PDIR)/common/Q_Lib \
 						-I $(PDIR)/common/http_server \
 						-I $(PDIR)/common/InfoSave \
 						-I $(PDIR)/common/Misc \

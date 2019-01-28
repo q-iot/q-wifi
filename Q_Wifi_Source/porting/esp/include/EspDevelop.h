@@ -51,7 +51,6 @@ void RtcSetCnt(u32 t);
 
 void RebootBoard(void);
 void ConfigChange(bool SysChange,bool InfoChange);
-bool IsHeapRam(void *ptr);
 
 u32 GenerateDefPw(void);
 u8 *GetMacAddress(void);

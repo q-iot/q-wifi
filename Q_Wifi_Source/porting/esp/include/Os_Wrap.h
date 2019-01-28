@@ -90,8 +90,7 @@ void OS_GetAllTaskInfo(void);
 #define OS_TimerSetCallback os_timer_setfn
 
 #define Q_HeapFreeSize system_get_free_heap_size
-#define Q_Malloc zalloc
-#define Q_Free free
+
 
 #endif			
 

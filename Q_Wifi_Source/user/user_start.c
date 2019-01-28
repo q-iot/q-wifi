@@ -6,9 +6,6 @@
 #undef CDebug
 #define CDebug Debug
 
-//adc循环和变量上报周期均采用的时间映射表
-const u32 gTimeMsMap[TPT_MAX]={0,500,1000,5000,10000,60000,600000,1800000};
-
 void DispWifiStation(void)
 {
 	u16 ap_id=wifi_station_get_current_ap_id();

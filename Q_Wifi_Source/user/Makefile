@@ -1,5 +1,5 @@
 
-#µ×ÏÂÃ»Ä¿Â¼µÄ£¬´Ë´¦Ìîlib+Ä¿Â¼Ãû.a
+#åº•ä¸‹æ²¡ç›®å½•çš„ï¼Œæ­¤å¤„å¡«lib+ç›®å½•å.a
 ifndef PDIR
 GEN_LIBS = lib_user.a
 endif

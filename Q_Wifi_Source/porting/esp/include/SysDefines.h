@@ -3,7 +3,7 @@
 
 #define ADMIN_DEBUG 1
 #define QWIFI_SOFT_VER 300
-#define RELEASE_DAY 190115
+#define RELEASE_DAY 190122
 
 #define SRV_FAILD_RETRY_MS (10*1000)//服务器连接失败的重试时间
 #define SRV_CONN_BEAT_S 30//客户端心跳包时间，单位秒
@@ -33,6 +33,7 @@
 #include "Os_Wrap.h"
 #include "LimitMarco.h"
 #include "NameDebug.h"
+#include "Q_Heap.h"
 
 #include "lwip/err.h"
 #include "lwip/opt.h"
@@ -66,14 +67,7 @@
 #include "user_hook.h"
 
 
-//---------------------------时间相关--------------------------------------
-typedef enum{
-	TPT_0=0,
-	TPT_500MS,TPT_1S,TPT_5S,TPT_10S,
-	TPT_1M,TPT_10M,TPT_30M,
-	TPT_MAX,
-}TIME_PERIOD_TYPE;//对应gTimeMap数组
-extern const u32 gTimeMsMap[TPT_MAX];
+
 
 
 

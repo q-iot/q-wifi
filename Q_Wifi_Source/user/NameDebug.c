@@ -245,6 +245,8 @@ const u8 *GlobaPktTypes(u8 Type)
 		case PT_SRV_LOGIN: return "S_LOGIN";
 		case PT_SRV_QUERY: return "S_QUERY";
 		case PT_SRV_MSG: return "S_MSG";
+		case PT_SRV_UNBIND: return "S_UNBIND";
+		case PT_SRV_CMD: return "S_CMD";
 	}
 
 	return "Unknow";
