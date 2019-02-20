@@ -6,28 +6,33 @@
 
 /*本文件用于一些公用的系统函数，可以供系统和页面调用，即此页函数均为可重入函数*/
 
-void MemSet(void *Dst,u8 C,u16 Byte)//字节安全
+void MemSet(void *Dst,u8 C,u32 Byte)//字节安全，esp编译器不支持byte过大，会崩溃，很奇怪
 {
-	if(Dst==NULL) return;
-	if(!Byte) return;
+	u32 n;
+	u8 *p=Dst;
+	
+	if(Dst==NULL||Byte==0) return;
 
-	for(Byte-=1;Byte;Byte--)
+	for(n=0;n<Byte;n++)
 	{
-		((u8 *)Dst)[Byte]=C;
+		*p++=0;
 	}
-	((u8 *)Dst)[0]=C;
 }
 
-void MemCpy(void *Dst,const void *Src,u16 Byte)//字节安全
+void MemCpy(void *Dst,const void *Src,u32 Byte)//字节安全
 {
-	if(Dst==NULL || Src==NULL || Dst==Src) return;
-	if(!Byte) return;
+	u32 n;
+	u8 *pD=Dst;
+	const u8 *pS=Src;
 	
-	for(Byte-=1;Byte;Byte--)
+	if(Dst==NULL || Src==NULL || Dst==Src) return;
+	if(Byte==0) return;
+	
+	for(n=0;n<Byte;n++)
 	{
-		((u8 *)Dst)[Byte]=((u8 *)Src)[Byte];
+		*pD=*pS;
+		pD++;pS++;
 	}
-	((u8 *)Dst)[0]=((u8 *)Src)[0];
 }
 
 //打印指定长度的字符串
@@ -422,27 +427,6 @@ const char *FindNumFromStr(const char *pStr,s32 *pNumRet)
 	return pRet;
 }
 
-//将字符串变成小写
-//字符串长度不要超过255
-void Str2Lower(char *pStr)
-{
-	u16 Len=strlen((void *)pStr);
-	u16 i;
-	
-	for(i=0;i<=Len;i++)//命令字符串全部转小写
-	{
-		if(pStr[i]<0x80)//ascii
-		{
-			if(pStr[i]>='A' && pStr[i]<='Z')
-				pStr[i]=pStr[i]+32;
-		}
-		else//中文
-		{
-			i++;
-		}
-	}
-}
-
 //查字符串是否空
 bool IsNullStr(char *pStr)
 {
@@ -472,6 +456,25 @@ u16 StrnCmp(const char *pStr1,const char *pStr2,u16 Bytes)
 	}
 
 	return 0;
+}
+
+//字符串拷贝，最长拷贝bytes字节，含结束符
+//返回拷贝的长度，不含结束符
+u16 StrnCpy(char *pDst,const char *pSrc,u16 Bytes)
+{
+	u16 i;
+
+	if(Bytes==0) return 0;
+	Bytes--;
+	
+	for(i=0;i<Bytes;i++)
+	{
+		pDst[i]=pSrc[i];
+		if(pSrc[i]==0)break;
+	}
+	pDst[i]=0;
+
+	return i;
 }
 
 //从str1里面找str2，str2里允许有通配符*，但首字节不能是*
@@ -675,6 +678,5 @@ u32 Rand(u32 Mask)
 
 	return (RandNum?RandNum:(0x12345678&Mask));
 }
-
 
 

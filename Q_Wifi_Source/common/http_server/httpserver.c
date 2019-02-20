@@ -1,7 +1,7 @@
 #include "SysDefines.h"
 #include "StrParse.h"
 #include "httpserver.h"
-#include "httpserver_custom.h"
+#include "httpserver_user.h"
 
 static char http_200_html[]  = "HTTP/1.1 200 OK\r\nContent-type: text/html\r\nConnection: close\r\n\r\n";
 static char http_200_css[] = "HTTP/1.1 200 OK\r\nContent-type: text/css\r\nConnection: close\r\n\r\n";
@@ -86,7 +86,7 @@ static const WEB_PARAM gWebParams[]=
 static void _html_file_zero_end(void)
 {
 	const WEB_RESOURCE *pItem=gWebResources;
-	char *pData=Q_Malloc(1024);	
+	char *pData=Q_Zalloc(1024);	
 	u8 Zero[]={0,0,0,0};
 
 	while(pItem->pFileName[0])//从文件列表轮询
@@ -196,71 +196,138 @@ static bool _get_val_output(const char *pVarStr,char *pOutStr)
 	return FALSE;
 }
 
-//将一段网页字符串中的变量全部转换并输出
-static void _get_vals_handler(NET_CONN_T *pConn,const char *pWebStr)
+//将一段网页字符串中的变量全部转换并输出到outbuf中
+//输入的字符串不应该大于一个tcp包长
+#define VAR_OUTPUT_BUF_LEN 200
+static u16 _get_vals_handler(char *pOutBuf,const char *pWebStr)
 {
-	const char *pOut=pWebStr;
+	const char *pOutTmp=pWebStr;
 	const char *pTmp=NULL;
 	const char *pTmp2=NULL;
-	u32 ReadIdx=0;
+	u32 ReadIdx=0,OutLen=0;
 	
-FindKeyword:
-	{	
-		pTmp=strstr(&pOut[ReadIdx],"${");
+	if(pOutBuf!=NULL)
+	{	//Debug("web71\n\r");
+FindKeyword:	
+		pTmp=strstr(&pOutTmp[ReadIdx],"${");
 		if(pTmp!=NULL) pTmp2=strchr(pTmp,'}');
 
-		//Debug("FindFrom:%s\n\r*****************\n\r",&pOut[ReadIdx]);
+		//Debug("FindFrom:%s\n\r*****************\n\r",&pOutTmp[ReadIdx]);
 
 		if(pTmp==NULL)//未找到任何标识，直接输出
 		{
-			//Debug("1[%u]%s\n\r###############\n\r",strlen(pOut),pOut);
-			netconn_write(pConn,pOut,strlen(pOut),NETCONN_NOCOPY);//直接输出
+			//Debug("1[%u]%s\n\r###############\n\r",strlen(pOutTmp),pOutTmp);
+			//netconn_write(pConn,pOutTmp,strlen(pOutTmp),NETCONN_NOCOPY);//直接输出
+			sprintf(&pOutBuf[OutLen],"%s",pOutTmp);
+			OutLen+=strlen(pOutTmp);
 		}
 		else //找到了头标识
 		{
 			if(pTmp2==NULL || (pTmp2-pTmp)>VAR_KEY_MAX_LEN) //未找到尾标识，或标识符太长
 			{
-				ReadIdx=pTmp-pOut+2;//读取指针往后移
+				ReadIdx=pTmp-pOutTmp+2;//读取指针往后移
 				goto FindKeyword;
 			}
 			else //找到了尾标识
 			{
-				char *pValKey=Q_Malloc(VAR_KEY_MAX_LEN+2);//变量关键字
-				char *pValStr=Q_Malloc(256);//变量内容输出
+				char *pValKey=Q_Zalloc(VAR_KEY_MAX_LEN+2);//变量关键字
+				char *pValStr=Q_Zalloc(VAR_OUTPUT_BUF_LEN);//变量内容输出
 
-				//Debug("2[%u]",pTmp-pOut);
-				//DisplayStrN(pOut,pTmp-pOut);
+				//Debug(" 2[%u]",pTmp-pOutTmp);
+				//DisplayStrN(pOutTmp,pTmp-pOutTmp);
 				//Debug("\n\r###############\n\r");
-				netconn_write(pConn,pOut,pTmp-pOut,NETCONN_NOCOPY);//输出参数前的内容
-				
+				//netconn_write(pConn,pOutTmp,pTmp-pOutTmp,NETCONN_NOCOPY);//输出参数前的内容
+				sprintf(&pOutBuf[OutLen],"%s",pOutTmp);
+				OutLen+=(pTmp-pOutTmp);
+			
 				//开始替换参数为实际值并输出
 				MemCpy(pValKey,&pTmp[2],pTmp2-pTmp-2);
 				pValKey[pTmp2-pTmp-2]=0;
 				
 				if(_get_val_output(pValKey,pValStr)==TRUE) //从列表找到了变量
 				{
-					pValStr[255]=0;
+					pValStr[VAR_OUTPUT_BUF_LEN-1]=0;
 					//Debug("3[%u]%s\n\r###############\n\r",strlen(pValStr),pValStr);
-					netconn_write(pConn,pValStr,strlen(pValStr),NETCONN_NOCOPY);//输出参数前的内容
+					//Debug(" 3[%u]",strlen(pValStr));
+					//netconn_write(pConn,pValStr,strlen(pValStr),NETCONN_NOCOPY);//输出参数前的内容
+					sprintf(&pOutBuf[OutLen],"%s",pValStr);
+					OutLen+=strlen(pValStr);
 				}
 				else //未从列表找到了变量
 				{
-					netconn_write(pConn,pValKey,strlen(pValKey),NETCONN_NOCOPY);//输出参数前的内容
-					netconn_write(pConn,"=null",5,NETCONN_NOCOPY);//输出参数前的内容
+					//Debug(" 4[%u]",strlen(pValKey));
+					//netconn_write(pConn,pValKey,strlen(pValKey),NETCONN_NOCOPY);//输出参数前的内容
+					//netconn_write(pConn,"=null",5,NETCONN_NOCOPY);//输出参数前的内容
+					sprintf(&pOutBuf[OutLen],"%s=null",pValKey);
+					OutLen+=(strlen(pValKey)+5);
 				}
-				
+
 				Q_Free(pValKey);
 				Q_Free(pValStr);
 				
-				pOut=&pTmp2[1];//定位pOut到后面的内容
+				pOutTmp=&pTmp2[1];//定位pOut到后面的内容
 				ReadIdx=0;
 				goto FindKeyword;	
 			}
 		}
 	}
+
+	return OutLen;
+}
+
+//找到需要替换的变量标签并处理
+static u16 _find_vals_tag(char *pWeb,u16 Len,char *Tail,u16 TailLen,char *pEndStr)
+{
+	u32 i;
+	
+	if(pWeb[Len-1]=='$')//特殊情况
+	{
+		Tail[0]='$';
+		TailLen=1;
+		Len-=1;
+		pWeb[Len]=0;
+	}
+	else if(pWeb[Len-2]=='$' && pWeb[Len-1]=='{')//特殊情况
+	{
+		Tail[0]='$';Tail[1]='{';
+		TailLen=2;
+		Len-=2;
+		pWeb[Len]=0;
+	}
+	else
+	{
+		//从后往前找第一次出现的字符$
+		pEndStr=pWeb;
+#if 1 //自定义查找函数				
+		for(i=Len-1;i>=Len-VAR_KEY_MAX_LEN;i--)
+		{
+			if(pWeb[i]=='$') 
+			{
+				pEndStr=&pWeb[i];
+				break;
+			}
+		}
+#else
+		pEndStr=strrchr(&pWeb[Len-VAR_KEY_MAX_LEN],'$');//找最后出现的一次
+#endif						
+		//Debug("strrchr2[%d] %x %x\n\r",pEndStr-pWeb,pEndStr,pWeb);
+		if(pEndStr!=NULL && pEndStr[1]=='{')//找到了变量开始字符
+		{
+			if(strchr(&pEndStr[2],'}')==NULL)
+			{
+				strcpy(Tail,pEndStr);
+				TailLen=strlen(Tail);							
+				Len=(u32)pEndStr-(u32)pWeb;
+				pWeb[Len]=0;								
+			}
+		}
+	}
+
+	return TailLen;
 }
 
 //输出包含变量的网页文本
+#define WEB_OUTPUT_BUF_LEN 1500
 static bool http_get_web(NET_CONN_T *pConn,const char *pUrl,const WEB_RESOURCE *pItem)
 {
 	if(pItem->pRes!=NULL)//从数组读取
@@ -269,13 +336,22 @@ static bool http_get_web(NET_CONN_T *pConn,const char *pUrl,const WEB_RESOURCE *
 		else if(pItem->Type==WRT_CSS) netconn_write(pConn,http_200_css,sizeof(http_200_css)-1,NETCONN_NOCOPY);//输出参数前的内容
 		else if(pItem->Type==WRT_JS) netconn_write(pConn,http_200_js,sizeof(http_200_js)-1,NETCONN_NOCOPY);//输出参数前的内容
 
-		if(pItem->DirectOutput) netconn_write(pConn,pItem->pRes,strlen(pItem->pRes),NETCONN_NOCOPY);//直接输出
-		else _get_vals_handler(pConn,pItem->pRes);
+		if(pItem->DirectOutput) 
+		{
+			netconn_write(pConn,pItem->pRes,strlen(pItem->pRes),NETCONN_NOCOPY);//直接输出
+		}
+		else 
+		{
+			char *pOutBuf=Q_Zalloc(WEB_OUTPUT_BUF_LEN);
+			u16 OutLen=_get_vals_handler(pOutBuf,pItem->pRes);
+			netconn_write(pConn,pOutBuf,strlen(pOutBuf),NETCONN_NOCOPY);
+			Q_Free(pOutBuf);
+		}
 		return TRUE;
 	}
 	else if(pItem->SecNum && (pItem->Sector+pItem->SecNum)<=FM_WEB_FILES_SEC_NUM)//从flash读取
 	{
-		char *pStrBuf=Q_Malloc(1050);//多申请几个字节放结束符
+		char *pStrBuf=Q_Zalloc(1050);//多申请几个字节放结束符
 		char *pEndStr=NULL;
 		u8 Tail[VAR_KEY_MAX_LEN+2];//多申请几个字节放结束符
 		u32 TailLen=0,TailLenAlign4=0;
@@ -325,7 +401,7 @@ FindTxtEnd:
 			}
 			else //没有找到结束串，会不会是结束串被截断了
 			{
-				char *pEndBuf=Q_Malloc(64);
+				char *pEndBuf=Q_Zalloc(64);
 				SpiFlsReadData(Addr-16,16+TXT_END_STR_LEN,(void *)pEndBuf);//往前读一点，避免切断结束符
 				pEndBuf[16+TXT_END_STR_LEN]=0;
 
@@ -347,63 +423,28 @@ Output: //开始替换输出
 			if(pItem->DirectOutput) //直接输出不用替换变量
 			{
 				//if(strcmp(pUrl,"/jquery.js")){Debug("WRITE:");DisplayStrN(pStrBuf,Len);}
+				//Debug("Out1[%u]\n\r",Len);
 				netconn_write(pConn,pWeb,Len,NETCONN_NOCOPY);//直接输出
 				//if(strcmp(pUrl,"/jquery.js"))Debug("END\n\r");
 			}
 			else //需要替换变量
 			{
-				if(NeedEnd==FALSE)//非最后一次发送网页内容
-				{
-					if(pWeb[Len-1]=='$')//特殊情况
-					{
-						Tail[0]='$';
-						TailLen=1;
-						Len-=1;
-						pWeb[Len]=0;
-					}
-					else if(pWeb[Len-2]=='$' && pWeb[Len-1]=='{')//特殊情况
-					{
-						Tail[0]='$';Tail[1]='{';
-						TailLen=2;
-						Len-=2;
-						pWeb[Len]=0;
-					}
-					else
-					{
-						//从后往前找第一次出现的字符$
-						pEndStr=pWeb;
-#if 1						
-						for(i=Len-1;i>=Len-VAR_KEY_MAX_LEN;i--)
-						{
-							if(pWeb[i]=='$') 
-							{
-								pEndStr=&pWeb[i];
-								break;
-							}
-						}
-#else
-						pEndStr=strrchr(&pWeb[Len-VAR_KEY_MAX_LEN],'$');//找最后出现的一次
-#endif						
-						//Debug("strrchr2[%d] %x %x\n\r",pEndStr-pWeb,pEndStr,pWeb);
-						if(pEndStr!=NULL && pEndStr[1]=='{')//找到了变量开始字符
-						{
-							if(strchr(&pEndStr[2],'}')==NULL)
-							{
-								strcpy(Tail,pEndStr);
-								TailLen=strlen(Tail);							
-								Len=(u32)pEndStr-(u32)pWeb;
-								pWeb[Len]=0;								
-							}
-						}
-					}
-				}
+				char *pOutBuf=NULL;
 				
+				if(NeedEnd==FALSE) TailLen=_find_vals_tag(pWeb,Len,Tail,TailLen,pEndStr);//非最后一次发送网页内容
+
 				//将关键字换成内容输出
 				//Debug("getVals[%u]%u\r\n%s\r\n************************\r\n",Len,strlen(pWeb),pWeb);
-				_get_vals_handler(pConn,pWeb);	
+				//_get_vals_handler(pConn,pWeb);	
+				
+				pOutBuf=Q_Zalloc(WEB_OUTPUT_BUF_LEN);
+				Len=_get_vals_handler(pOutBuf,pWeb);
+				//Debug("Out2[%u]\n\r",Len);
+				netconn_write(pConn,pOutBuf,strlen(pOutBuf),NETCONN_NOCOPY);
+				Q_Free(pOutBuf);
 			}
 			
-			if(NeedEnd)break;
+			if(NeedEnd)break;			
 		}
 
 		Q_Free(pStrBuf);
@@ -422,7 +463,7 @@ static bool http_get_file(NET_CONN_T *pConn,const char *pUrl,const WEB_RESOURCE 
 	}
 	else if(pItem->SecNum && (pItem->Sector+pItem->SecNum)<=FM_WEB_FILES_SEC_NUM)//从flash读取
 	{
-		char *pData=Q_Malloc(1024);
+		char *pData=Q_Zalloc(1024);
 		u32 Addr,EndAddr;
 
 		if(pItem->Type==WRT_PNG) netconn_write(pConn,http_200_png,sizeof(http_200_png)-1,NETCONN_NOCOPY);
@@ -518,8 +559,8 @@ static const char *http_post_handler(NET_CONN_T *pConn,const char *pUrl,char *pP
 	if(1)
 	{
 		u16 Num=0,i,n,m;
-		char **pParam=Q_Malloc(STR_PARAM_MAX_NUM*sizeof(char *));//支持最多32个参数
-		char **pVal=Q_Malloc(STR_PARAM_MAX_NUM*sizeof(char *));
+		char **pParam=Q_Zalloc(STR_PARAM_MAX_NUM*sizeof(char *));//支持最多32个参数
+		char **pVal=Q_Zalloc(STR_PARAM_MAX_NUM*sizeof(char *));
 
 		Num=StrParamParse(pParamStr,pParam,pVal);	
 		pRetUrl=http_post_user_handler(pUrl,Num,(const char **)pParam,(const char **)pVal);//custom处理函数
@@ -537,7 +578,7 @@ static void http_server_handler(NET_CONN_T *pConn)
 	NET_BUF_T *NetBuf;
 	NET_ERR_T Err;
 	const char *pJumpUrl="";
-	char *pData=Q_Malloc(2000);
+	char *pData=Q_Zalloc(2000);
 	void *p=NULL;
 	u16 RecvLen=0,Len=0;
 
@@ -592,7 +633,7 @@ static void http_server_handler(NET_CONN_T *pConn)
 GetHandler:
 			if(pJumpUrl!=NULL && pJumpUrl[0]!=0) //重定向
 			{
-				char *pLocal=Q_Malloc(1024);
+				char *pLocal=Q_Zalloc(1024);
 				sprintf(pLocal,http_location,pJumpUrl);
 				netconn_write(pConn,pLocal,strlen(pLocal),NETCONN_NOCOPY);
 				Q_Free(pLocal);				

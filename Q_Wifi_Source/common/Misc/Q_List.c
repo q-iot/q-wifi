@@ -100,7 +100,7 @@ u16 QList_AddItem(QLIST_INFO *pList,void *pItem)
 		return 0;
 	}
 
-	pNew=Q_Malloc(pList->ItemSize);
+	pNew=Q_ZallocAsyn(pList->ItemSize);
 	MemCpy(pNew,pItem,pList->ItemSize);	
 	pNew->pNext=NULL;
 

@@ -106,7 +106,7 @@ static void NewClient_Thread(NET_CONN_T *NewConn)
 			if(NetBuf->p->tot_len)
 			{
 				u16 MallocLen=NetBuf->p->tot_len+TailLen;
-				u8 *pData=Q_Malloc(MallocLen>PKT_MAX_DATA_LEN?MallocLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
+				u8 *pData=Q_Zalloc(MallocLen>PKT_MAX_DATA_LEN?MallocLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
 				u32 RecvLen=TailLen;
 
 				if(TailLen && pTail!=NULL)
@@ -141,7 +141,7 @@ RecvHandle:
 				{
 					TailLen=RecvLen-pHeader[0];//多收的长度
 					RecvLen=pHeader[0];//方便后面使用
-					pTail=Q_Malloc(TailLen);
+					pTail=Q_Zalloc(TailLen);
 					MemCpy(pTail,&pData[pHeader[0]],TailLen);//拷贝多余的部分
 					MemSet(&pData[pHeader[0]],0,TailLen);
 				}
@@ -184,7 +184,7 @@ RecvFinish:
 
 				if(TailLen && pTail!=NULL && (*(u16 *)pTail)<=TailLen) //多余的数据，可以形成一个包
 				{
-					pData=Q_Malloc(TailLen>PKT_MAX_DATA_LEN?TailLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
+					pData=Q_Zalloc(TailLen>PKT_MAX_DATA_LEN?TailLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
 					RecvLen=TailLen;
 					
 					MemCpy(pData,pTail,TailLen);//拷贝上次多余
@@ -234,7 +234,7 @@ static void AppUserClientsHandler(void *arg)
 			{
 				u8 ThreadName[24];
 				sprintf((void *)ThreadName,"AUC_%x",NewConn);
-				sys_thread_new((void *)ThreadName,(void *)NewClient_Thread,NewConn,384,DEFAULT_THREAD_PRIO);
+				sys_thread_new((void *)ThreadName,(void *)NewClient_Thread,NewConn,400,DEFAULT_THREAD_PRIO);
 				gTcpAppClientCnt++;
 			}
 		}
@@ -258,7 +258,7 @@ void TcpServer_Init(void)
 
 	if(OnlyFlag)
 	{
-		sys_thread_new("AppCltMonitor",AppUserClientsHandler,NULL,256,TASK_TCP_APP_PRIO);
+		sys_thread_new("AppCltMonitor",AppUserClientsHandler,NULL,400,TASK_TCP_APP_PRIO);
 		OnlyFlag=FALSE;
 	}
 }

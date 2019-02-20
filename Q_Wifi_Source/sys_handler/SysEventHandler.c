@@ -3,7 +3,7 @@
 #include "VarDisplay.h"
 
 typedef struct{
-	SYS_EVENT_NAME Event;
+	u32 Event;//SYS_EVENT_NAME
 
 	u32 Arg1;
 	void *pArg2;
@@ -20,7 +20,8 @@ void SysEventTask(void *pvParameters)
 	static SYS_EVENT_ITEM gEventItemRecv;
 
 	gQueueSysEvent=OS_QueueCreate(32,sizeof(SYS_EVENT_ITEM));//第一个参数指定队列深度，第二个参数指定成员大小
-
+	QHeapMemSetName(gQueueSysEvent,"SysEventQ");
+	
 	while(1)
 	{
 		//MemSet(&gEventItemRecv,0,sizeof(gEventItemRecv));
@@ -63,7 +64,7 @@ void SysEventTask(void *pvParameters)
 					if(GetClientFlag(gEventItemRecv.pArg2) == CLIENT_T_LOCAL)
 					{
 						PKT_HANDLER_RES HandlerRes;
-						UPDATE_PKT *pUpdPkt=Q_Malloc(64);
+						UPDATE_PKT *pUpdPkt=Q_Zalloc(64);
 
 						//Debug("SEN_OVER_CLIENT AppID:%u, pClient:0x%x\n\r\n\r",gEventItemRecv.Arg1,gEventItemRecv.pArg2);
 						pUpdPkt->PktLen=sizeof(UPDATE_PKT);
@@ -200,7 +201,7 @@ void SysEventMsSend(u32 Ms,u32 Event,u32 Arg1,void *pArg2,MS_FUNC_MODE Mode)
 		while(1);
 	}
 	
-	gpSysEvtMsRcd[i]=pItem=Q_Malloc(sizeof(SYS_EVENT_ITEM));
+	gpSysEvtMsRcd[i]=pItem=Q_ZallocAsyn(sizeof(SYS_EVENT_ITEM));
 	pItem->Event=Event;
 	pItem->Arg1=Arg1;
 	pItem->pArg2=pArg2;
@@ -232,7 +233,7 @@ void SysEventMsSend(u32 Ms,u32 Event,u32 Arg1,void *pArg2,MS_FUNC_MODE Mode)
 				}//无需break，直接新增新的
 			case MFM_ALWAYS:
 Always:	
-				pItem->pTimer=Q_Malloc(sizeof(OS_TIMER_T));
+				pItem->pTimer=Q_ZallocAsyn(sizeof(OS_TIMER_T));
 				OS_TimerSetCallback(pItem->pTimer,(OS_TIMER_FUNC_T *)SysEventMsSend_Cb,(void *)i);
 				OS_TimerInit(pItem->pTimer,Ms,FALSE);
 				pItem->ExpireTime=OS_GetNowMs()+Ms;//记录到期时间

@@ -25,8 +25,8 @@ static u32 gJsonQNum=0;
 bool SendPostRequest(const u8 *pUrl,const u8 *pJsonStr)
 {
 	u16 JsonStrLen=strlen(pJsonStr);
-	u8 *pPostStr=Q_Malloc(JsonStrLen+256);
-	u8 *pHost=Q_Malloc(32);
+	u8 *pPostStr=Q_Zalloc(JsonStrLen+256);
+	u8 *pHost=Q_Zalloc(32);
 	u8 *p=NULL;
 	u8 *pDir=NULL;
 	
@@ -48,7 +48,7 @@ bool SendPostRequest(const u8 *pUrl,const u8 *pJsonStr)
 	//if(NeedDebug(DFT_SRV_JSON)) Debug("SendJson[%u]:%s[END]\r\n",JsonStrLen,pJsonStr);
 	if(NeedDebug(DFT_SRV_JSON)) Debug(pPostStr);
 	//if(NeedDebug(DFT_SRV_JSON)) DisplayBuf(pPostStr,128,16);
-	//if(NeedDebug(DFT_SRV_JSON)) Debug("[%u]END\n\r",strlen(pPostStr));
+	if(NeedDebug(DFT_SRV_JSON)) Debug("[%u]END\n\r",strlen(pPostStr));
 
 	SendToJsonSrv(pPostStr,strlen(pPostStr));
 
@@ -64,14 +64,14 @@ u16 HttpRespParse(const char *pData,char **pJsonStr,u16 *pJsonLen)
 	char *p2=NULL;
 	u16 RespCode=0;
 
-	if(pData==NULL) return 0;
+	if(pData==NULL) return 800;
 	
 	//先找状态码
 	p1=strstr(pData,"HTTP");
 	if(p1==NULL) p1=strstr(pData,"http");
-	if(p1==NULL) return 400;
+	if(p1==NULL) return 801;
 	p2=strchr(p1,' ');
-	if(p2==NULL) return 400;
+	if(p2==NULL) return 802;
 
 	while(*p2==' ') p2++;
 	while(*p2)//转换返回码
@@ -86,22 +86,22 @@ u16 HttpRespParse(const char *pData,char **pJsonStr,u16 *pJsonLen)
 		u16 JsonLen=0;
 		p1=strstr(pData,"Content-Length:");//获取内容长度
 		if(p1==NULL) p1=strstr(pData,"content-length:");
-		if(p1==NULL) return 400;
+		if(p1==NULL) return 803;
 
 		p1=strchr(p1,':');
 		p2=strstr(p1,"\r\n");
-		if(p2==NULL) return 400;
+		if(p2==NULL) return 804;
 		JsonLen=Str2Uint(&((char *)p1)[1]);//读取content长度
-		if(JsonLen==0) return 400;
+		if(JsonLen==0) return 805;
 
 		//找到存储字符串的地方
 		p1=strstr(p2,"\r\n\r\n{");
-		if(p1==NULL) return 400;
+		if(p1==NULL) return 806;
 		p2=strchr(p1,'{');
 		p1=strrchr(p2,'}');
-		if(p1==NULL) return 400;
+		if(p1==NULL) return 807;
 		//Debug("p2=%s,%u,%u-%u\n\r",p2,JsonLen,(u32)p2,(u32)p1);
-		if(JsonLen!=((u32)p1-(u32)p2+1)) return 400;//不做分包了，所以长度必须相等		
+		if(JsonLen!=((u32)p1-(u32)p2+1)) return 808;//不做分包了，所以长度必须相等		
 
 		if(pJsonStr) *pJsonStr=p2;
 		if(pJsonLen) *pJsonLen=JsonLen;
@@ -156,7 +156,7 @@ static void JsonConnTask_WaitEvent(IP_ADDR *pServerIp,u16 ServerPort)
 						{
 							if(NetBuf->p->tot_len)
 							{
-								char *pData=Q_Malloc(2000);//多申请一点，防止溢出
+								char *pData=Q_Zalloc(2000);//多申请一点，防止溢出
 								char *p=NULL;
 								u16 RecvLen=0;
 								u16 Len,JsonLen;
@@ -181,7 +181,7 @@ static void JsonConnTask_WaitEvent(IP_ADDR *pServerIp,u16 ServerPort)
 								RespCode=HttpRespParse(pData,&p,&JsonLen);//报文解析
 
 								if(NeedDebug(DFT_SRV_JSON)) Debug("Code[%u]\r\n",RespCode);
-								if(RespCode==403 || RespCode==404 || RespCode==500 || RespCode==503)
+								if(RespCode!=200)
 								{
 									if(NeedDebug(DFT_SRV_JSON)) Debug("Resp %u, Stop Post!\n\r",RespCode);
 									SysVars()->StopDataUp=TRUE;//停止上报
@@ -196,11 +196,14 @@ static void JsonConnTask_WaitEvent(IP_ADDR *pServerIp,u16 ServerPort)
 					}
 					else //连接未成功
 					{
-						Debug("Json_%x conn err \"%s\"\n\r",SrvConn,lwip_strerr(Error));
+						if(NeedDebug(DFT_SRV_JSON)) Debug("Json_%x conn err \"%s\"\n\r",SrvConn,lwip_strerr(Error));
+						if(JsonEvtItem.PathStrNeedFree) Q_Free(JsonEvtItem.pPath);//清理内存
+						if(JsonEvtItem.JsonStrNeedFree) Q_Free(JsonEvtItem.pJsonStr);//清理内存
 						
 						while(OS_QueueReceive(gJsonUpQueue,&JsonEvtItem,0))//连接错误，将队列清空，避免队列内容过多溢出
 						{
-							gJsonQNum--;Debug("-JsonQ%u\n\r",gJsonQNum);
+							gJsonQNum--;
+							if(NeedDebug(DFT_SRV_JSON)) Debug("-JsonQ%u\n\r",gJsonQNum);
 							if(JsonEvtItem.PathStrNeedFree) Q_Free(JsonEvtItem.pPath);//清理内存
 							if(JsonEvtItem.JsonStrNeedFree) Q_Free(JsonEvtItem.pJsonStr);//清理内存
 						}
@@ -232,7 +235,7 @@ static void JsonConnTask(void *arg)
 
 	//通过DNS找寻服务器ip
   	{
-		char *pURL=Q_Malloc(LONG_STR_BYTES);
+		char *pURL=Q_Zalloc(LONG_STR_BYTES);
 		char *pPort=NULL;
 		char *p=NULL;
 		
@@ -265,7 +268,7 @@ static void JsonConnTask(void *arg)
 	}
 
 	JsonConnSendBeat();
-    OS_TaskCreate(VarsJsonUp_Task, "JsonUp Task",512,NULL,TASK_VAR_JSON_UP_PRIO,NULL); 
+    sys_thread_new( "JsonUp Task",VarsJsonUp_Task,NULL,400,TASK_VAR_JSON_UP_PRIO); 
 	JsonConnTask_WaitEvent(&ServerIp,ServerPort);//等待其他线程发json请求	
 	
 	SysVars()->JsonConnStaus=SCS_OFFLINE;
@@ -273,7 +276,7 @@ static void JsonConnTask(void *arg)
 
 Restart:
 	OS_TaskDelayMs(SRV_FAILD_RETRY_MS); //延时等待重试	
-	if(SysVars()->SrvSecretKey) sys_thread_new("JsonConn   ",JsonConnTask,NULL,512,TASK_TCP_CLIENT_PRIO);//重新建立线程，如果由于登陆回包不正确，则SysVars()->SrvSecretKey会被板卡设置为0，则停止连接
+	if(SysVars()->SrvSecretKey) sys_thread_new("JsonConn   ",JsonConnTask,NULL,400,TASK_TCP_CLIENT_PRIO);//重新建立线程，如果由于登陆回包不正确，则SysVars()->SrvSecretKey会被板卡设置为0，则停止连接
 	OS_TaskDelete(NULL);//删除线程自己    
 }  
 
@@ -285,7 +288,8 @@ void JsonClient_Init(void)
 	if(OnlyFlag)
 	{
 		gJsonUpQueue=OS_QueueCreate(JSON_UP_QUEUE_LEN,sizeof(JSON_UP_EVENT));//第一个参数指定队列深度，第二个参数指定成员大小
-		sys_thread_new("JsonConn   ",JsonConnTask,NULL,512,TASK_TCP_CLIENT_PRIO);
+		QHeapMemSetName(gJsonUpQueue,"JsonUpQ");
+		sys_thread_new("JsonConn   ",JsonConnTask,NULL,400,TASK_TCP_CLIENT_PRIO);
 		OnlyFlag=FALSE;
 	}	
 }
@@ -309,25 +313,28 @@ void UpJsonDataToSrv(const u8 *pPath,u8 *pJsonStr,pStdFunc JsonSentCb)
 	JSON_UP_EVENT JsonItem;
 
 	if(gJsonUpQueue==NULL) return;
-
+	if(gJsonQNum>=(JSON_UP_QUEUE_LEN>>1)) return;
+	
 	JsonItem.Event=JEN_UP;
-	JsonItem.pPath=Q_Malloc(strlen(pPath)+LONG_STR_BYTES+2);//等待json发送完成后释放
+	JsonItem.pPath=Q_ZallocAsyn(strlen(pPath)+LONG_STR_BYTES+2);//等待json发送完成后释放
 	strcpy(JsonItem.pPath,pPath);
 	JsonItem.PathStrNeedFree=TRUE;
-	JsonItem.pJsonStr=Q_Malloc(strlen(pJsonStr)+32);//等待json发送完成后释放
+	JsonItem.pJsonStr=Q_ZallocAsyn(strlen(pJsonStr)+32);//等待json发送完成后释放
 	strcpy(JsonItem.pJsonStr,pJsonStr);
 	JsonItem.JsonStrNeedFree=TRUE;
 	JsonItem.pJsonReturn=JsonSentCb;
-
 	
 	if(OS_QueueSend(gJsonUpQueue,&JsonItem,0)!= pdPASS)
 	{
 		Debug("QSend Failed\n\r");
+		if(JsonItem.PathStrNeedFree) Q_Free(JsonItem.pPath);
+		if(JsonItem.JsonStrNeedFree) Q_Free(JsonItem.pJsonStr);
 	}
 	else
 	{
-gJsonQNum++;
-	}Debug("JsonQ %u\n\r",gJsonQNum);
+		gJsonQNum++;
+	}
+	if(NeedDebug(DFT_SRV_JSON)) Debug("JsonQ %u\n\r",gJsonQNum);
 }
 
 

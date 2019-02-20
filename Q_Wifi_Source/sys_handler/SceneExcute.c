@@ -4,7 +4,7 @@
 //执行按键动作
 static SCENE_EXC_RES SceneKeyExc(EXC_KEY_ITEM *pKey)
 {
-	DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+	DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 	SCENE_EXC_RES ExcRes=SER_NULL;
 
 	Debug("Dev %u, Key %u\n\r",pKey->DevID,pKey->Key);
@@ -94,19 +94,19 @@ static SCENE_EXC_RES SceneMsgExc(EXC_STR_ITEM *pMsg)
 	if(pMsg->StrID)
 	{
 		u8 *pUser=NULL;
-		u8 *pStr=Q_Malloc(STR_RECORD_BYTES);
+		u8 *pStr=Q_Zalloc(STR_RECORD_BYTES);
 		u8 StrLen=GetStrRecordData(pMsg->StrID,pStr);
 		u8 UserNameLen=0;
 		u8 MsgFlag=0;
 
 		if(pMsg->UserID)//单个用户
 		{
-			pUser=Q_Malloc(STR_RECORD_BYTES);
+			pUser=Q_Zalloc(STR_RECORD_BYTES);
 			UserNameLen=GetStrRecordData(pMsg->UserID,pUser);		
 		}
 		else//所有用户
 		{
-			pUser=Q_Malloc(4);
+			pUser=Q_Zalloc(4);
 			pUser[0]='0';
 			pUser[1]=0;
 			UserNameLen=1;
@@ -165,7 +165,7 @@ static void SceneExcuteTask(void *pvParameters)
 				break;
 			case SIA_SCENE_EXC:
 				{
-					SCENE_RECORD *pScn=Q_Malloc(sizeof(SCENE_RECORD));
+					SCENE_RECORD *pScn=Q_Zalloc(sizeof(SCENE_RECORD));
 
 					if(ReadInfoByID(IFT_SCENE,pItem->Exc.SceneID,pScn))
 					{
@@ -212,13 +212,13 @@ SCENE_EXC_RES CallSceneExcute(u8 ItemNum,SCENE_ITEM *pItems,u32 TimeoutMs)
 		}
 	}
 
-	pInfo=Q_Malloc(sizeof(SCENE_EXCUTE_INFO)+(ItemNum-1)*sizeof(SCENE_ITEM));
+	pInfo=Q_ZallocAsyn(sizeof(SCENE_EXCUTE_INFO)+(ItemNum-1)*sizeof(SCENE_ITEM));
 
 	pInfo->ItemNum=ItemNum;
 	pInfo->pWaitFlag=&ExcRes;
 	MemCpy(pInfo->Items,pItems,ItemNum*sizeof(SCENE_ITEM));
 	
-	OS_TaskCreate(SceneExcuteTask,"ScnExe Task",TASK_STK_SIZE_NORMAL,pInfo,TASK_SCN_EXE_PRIO,NULL);
+	OS_TaskCreate(SceneExcuteTask,"ScnExe Task",TASK_STK_SIZE_MIN,pInfo,TASK_SCN_EXE_PRIO,NULL);
 
 	if(TimeoutMs==0) return SER_OK;
 	
@@ -237,7 +237,7 @@ SCENE_EXC_RES CallSceneExcute(u8 ItemNum,SCENE_ITEM *pItems,u32 TimeoutMs)
 SCENE_EXC_RES CallSceneExcuteOne(ID_T ScnID,u32 TimeoutMs)
 {
 	SCENE_EXC_RES Res;
-	SCENE_ITEM *pItem=Q_Malloc(sizeof(SCENE_ITEM));
+	SCENE_ITEM *pItem=Q_Zalloc(sizeof(SCENE_ITEM));
 	
 	pItem->Act=SIA_SCENE_EXC;
 	pItem->DelaySec=0;

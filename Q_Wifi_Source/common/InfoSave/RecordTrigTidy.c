@@ -23,7 +23,7 @@ static void FilterVaildID(TRIG_RCD_HEADER *pIDs,u16 IdNum,u16 ScnID)
 //启动的时候调用一次，会删掉冗余var记录
 void TrigRecordTidy(void)
 {
-	u32 *pRcd=Q_Malloc(1024);
+	u32 *pRcd=Q_Zalloc(1024);
 	TRIGGER_RECORD *pTrigRcd=(void *)pRcd;
 	SCENE_RECORD *pScn=(void *)pRcd;
 	INFO_IDX Idx=1;
@@ -32,7 +32,7 @@ void TrigRecordTidy(void)
 	TRIG_RCD_HEADER *pObjIDs=NULL;
 	
 	InfoNum=GetTypeInfoTotal(IFT_TRIGGER);
-	pObjIDs=Q_Malloc(InfoNum*sizeof(TRIG_RCD_HEADER));
+	pObjIDs=Q_Zalloc(InfoNum*sizeof(TRIG_RCD_HEADER));
 	if(NeedDebug(DFT_SYS)) Debug("Trig Info Num = %u\n\r",InfoNum);
 	
 	for(Idx=1;Idx<=InfoNum;Idx++)

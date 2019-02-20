@@ -3,7 +3,7 @@
 
 void TLV_Debug(u8 *pTlv,u16 Len)
 {
-	u8 *pBuf=Q_Malloc(512);
+	u8 *pBuf=Q_Zalloc(512);
 	TLV_DATA *pItem=(void *)pBuf;
 	u16 Idx=1;
 	s16 TlvLen=0;
@@ -16,8 +16,8 @@ void TLV_Debug(u8 *pTlv,u16 Len)
 		Sum+=(2+TlvLen);
 
 		if(TlvLen<0) break;
-		else if(TlvLen>0) Debug("[%2u]%s(%u)\n\r",pItem->Type,pItem->Str,pItem->Len);
-		else Debug("[%2u](%u)\n\r",pItem->Type,TlvLen);
+		else if(TlvLen>0) Debug("[T%2u]%s(L%u)\n\r",pItem->Type,pItem->Str,pItem->Len);
+		else Debug("[T%2u](L%u)\n\r",pItem->Type,TlvLen);
 	}
 
 	Q_Free(pBuf);

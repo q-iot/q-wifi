@@ -239,7 +239,7 @@ static bool CheckBlockFat(INFO_BLOCK Block)
 static bool CheckBlockIdle(INFO_BLOCK Block)
 {
 	u32 j,Addr,EndAddr=(GetBlockStartSec(Block)+gBlockAttrib[Block].SectorNum)*FLASH_SECTOR_BYTES;
-	u32 *pBuf=Q_Malloc(1024);
+	u32 *pBuf=Q_Zalloc(1024);
 
 	for(Addr=GetBlockStartAddr(Block);Addr<EndAddr;Addr+=1024)//ÖðÒ³¶ÁÈ¡
 	{
@@ -296,7 +296,7 @@ static void FlushBlock(INFO_BLOCK Block)
 	u32 UnitSize=gBlockAttrib[Block].UnitSize;
 	u32 UintNum=(FLASH_SECTOR_BYTES/gBlockAttrib[Block].UnitSize);
 	u32 DstAddr=GetBlockStartAddr(Block);
-	u8 *pSecBuf=Q_Malloc(FLASH_SECTOR_BYTES);
+	u8 *pSecBuf=Q_Zalloc(FLASH_SECTOR_BYTES);
 	INFO_MAP *pMap=gBlockAttrib[Block].pMap;
 	INFO_HEADER_AND_ID *pBuf;
 	u32 MapIdx=0,Unit,Addr;

@@ -1,36 +1,19 @@
 #include "SysDefines.h"
 
 extern const VARIABLE_RECORD gInfo_VarRcdDef[];
-static u8 gSysVarHaveFlag[4]={0,0,0,0};//数组大小根据系统变量实际个数确定，每个bit存储一个变量的状态
-
-//设置已经存在的系统变量标志位
-void SetSysVarHave(u32 ProdTag,u32 VarTag)
-{
-	u16 i;
-	
-	for(i=0;;i++)
-	{
-		if(gInfo_VarRcdDef[i].ProdTag.Num==0) break;
-		if(TagNum(gInfo_VarRcdDef[i].ProdTag.Char)==ProdTag && TagNum(gInfo_VarRcdDef[i].VarTag.Char)==VarTag)
-		{
-			SetArrayBit(gSysVarHaveFlag,i);
-			return;
-		}
-	}	
-}
 
 //检查是否所有的系统变量都在数据库中
 //ForceCreatAll == TRUE 时，创建所有系统变量
 void CheckAllSysVarHave(bool ForceCreatAll)
 {
-	VARIABLE_RECORD *pRcd=Q_Malloc(sizeof(VARIABLE_RECORD));
+	VARIABLE_RECORD *pRcd=Q_Zalloc(sizeof(VARIABLE_RECORD));
 	u16 i;
 	bool NeedReboot=FALSE;
 	
 	for(i=0;;i++)
 	{
 		if(gInfo_VarRcdDef[i].ProdTag.Num==0) break;
-		if(ReadArrayBit(gSysVarHaveFlag,i)==0 || ForceCreatAll)
+		if(FindVarId_ByTag2(gInfo_VarRcdDef[i].ProdTag.Char,gInfo_VarRcdDef[i].VarTag.Char)==0 || ForceCreatAll)
 		{
 			NeedReboot=TRUE;
 

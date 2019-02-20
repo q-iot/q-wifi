@@ -41,7 +41,7 @@ static void FilterVaildSubID(STR_RCD_HEADER *pIDs,u16 IdNum,ID_T SubID)
 //启动的时候调用一次，会删掉冗余字符串记录
 void StrRecordTidy(void)
 {
-	u32 *pRcd=Q_Malloc(1024);
+	u32 *pRcd=Q_Zalloc(1024);
 	STR_RECORD *pStrRcd=(void *)pRcd;
 	SCENE_RECORD *pScn=(void *)pRcd;
 	TRIGGER_RECORD *pTrig=(void *)pRcd;
@@ -55,7 +55,7 @@ void StrRecordTidy(void)
 	INFO_TYPE Type;
 
 	InfoNum=GetTypeInfoTotal(IFT_STR);
-	pObjIDs=Q_Malloc(InfoNum*sizeof(STR_RCD_HEADER));
+	pObjIDs=Q_Zalloc(InfoNum*sizeof(STR_RCD_HEADER));
 	if(NeedDebug(DFT_SYS)) Debug("Str Info Num = %u\n\r",InfoNum);
 	
 	for(Idx=1;Idx<=InfoNum;Idx++)
@@ -161,7 +161,7 @@ u8 GetStrRecordData(ID_T Id,u8 *pOut)
 		
 	if(HBit16(Id)==GOT_NAME)
 	{
-		STR_RECORD *pStrRcd=Q_Malloc(sizeof(STR_RECORD));
+		STR_RECORD *pStrRcd=Q_Zalloc(sizeof(STR_RECORD));
 		
 		Res=ReadInfoByID(IFT_STR,Id,pStrRcd);
 		if(Res && pStrRcd->ID)
@@ -189,7 +189,7 @@ u32 CalcStrRecordHash(ID_T Id)
 	
 	if(HBit16(Id)==GOT_NAME)
 	{
-		STR_RECORD *pStrRcd=Q_Malloc(sizeof(STR_RECORD));
+		STR_RECORD *pStrRcd=Q_Zalloc(sizeof(STR_RECORD));
 		
 		Res=ReadInfoByID(IFT_STR,Id,pStrRcd);
 		if(Res && pStrRcd->ID)

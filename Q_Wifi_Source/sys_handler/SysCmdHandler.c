@@ -1,4 +1,5 @@
 #include "SysDefines.h"
+#include "StrParse.h"
 #include "VarsJsonUpTask.h"
 #include "Q_List.h"
 
@@ -8,7 +9,7 @@ static bool __inline SysCmdHandler_A(char **pCmd,const char *pStrCopy,char *pOut
 	{
 		if(NotNullStr(pCmd[1]) && NotNullStr(pCmd[2]))
 		{
-			struct softap_config *ap_config = (struct softap_config *)Q_Malloc(sizeof(struct softap_config)); // initialization
+			struct softap_config *ap_config = (void *)Q_Zalloc(sizeof(struct softap_config)); // initialization
 			wifi_softap_get_config(ap_config); // Get soft-AP ap_config first.
 			sprintf(ap_config->ssid, pCmd[1]);
 			sprintf(ap_config->password, pCmd[2]);
@@ -39,7 +40,7 @@ static bool __inline SysCmdHandler_A(char **pCmd,const char *pStrCopy,char *pOut
 	}
 	else if(strcmp((void *)pCmd[0],"adc")==0)
 	{
-		Debug("ADC=%umV\n\r",(EspHwAdcRead()*1000)>>10);
+		CDebug("ADC=%umV\n\r",(EspHwAdcRead()*1000)>>10);
 		return TRUE;
 	}
 
@@ -91,14 +92,8 @@ static bool __inline SysCmdHandler_D(char **pCmd,const char *pStrCopy,char *pOut
 			Sys_DbDebug(0);
 		}
 		else
-		{
-			//INFO_TYPE Name;
-			
-			//if(NotNullStr(pCmd[2])) Idx=Str2Uint(pCmd[2]);
-			//if(NotNullStr(pCmd[3])) Num=Str2Uint(pCmd[3]);
-			
-			if(strcmp((void *)pCmd[1],"lcd")==0){Sys_DbDebug(1);}
-			else if(strcmp((void *)pCmd[1],"hw")==0){HWC_Debug();}
+		{			
+			if(strcmp((void *)pCmd[1],"hw")==0){HWC_Debug();}
 			else if(strcmp((void *)pCmd[1],"task")==0){OS_GetAllTaskInfo();}
 			else if(strcmp((void *)pCmd[1],"client")==0) {AppClientDebug();}
 			else if(strcmp((void *)pCmd[1],"var")==0) {VarListDebug();}
@@ -170,7 +165,7 @@ static bool __inline SysCmdHandler_D(char **pCmd,const char *pStrCopy,char *pOut
 		QDB_BurnDefaultToSpiFlash(SDN_QCK);
 		InfoSaveInit(TRUE);//恢复出厂设置
 		ConfigChange(TRUE,TRUE);
-		RebootBoard();
+		SysEventMsSend(3000,SEN_CB_FUNC,0,RebootBoard,MFM_COVER);
 		return TRUE;
 	}
 
@@ -185,10 +180,10 @@ static bool __inline SysCmdHandler_E(char **pCmd,const char *pStrCopy,char *pOut
 		u32 a=Str2Uint(pCmd[1]);
 		u32 b=Str2Uint(pCmd[2]);
 
-		Debug("ieee2f %f = %x\n\r",110.80,Float2Ieee(110.80));
-		Debug("ieee2f %f = %x\n\r",0.124,Float2Ieee(0.124));
-		Debug("float2i %x = %f\n\r",0x3DFDF3B6,Ieee2Float(0x3DFDF3B6));
-		Debug("float2i %x = %f\n\r",0x42DDCC80,Ieee2Float(0x42DDCC80));
+		CDebug("ieee2f %f = %x\n\r",110.80,Float2Ieee(110.80));
+		CDebug("ieee2f %f = %x\n\r",0.124,Float2Ieee(0.124));
+		CDebug("float2i %x = %f\n\r",0x3DFDF3B6,Ieee2Float(0x3DFDF3B6));
+		CDebug("float2i %x = %f\n\r",0x42DDCC80,Ieee2Float(0x42DDCC80));
 		
 		return TRUE;
 	}
@@ -272,7 +267,7 @@ static bool __inline SysCmdHandler_H(char **pCmd,const char *pStrCopy,char *pOut
 {
 	if(strcmp((void *)pCmd[0],"heap")==0)	
 	{
-		system_show_malloc();
+		QHeapDebug();
 		return TRUE;
 	}
 	return FALSE;
@@ -281,7 +276,7 @@ static bool __inline SysCmdHandler_H(char **pCmd,const char *pStrCopy,char *pOut
 #if 1
 static bool __inline SysCmdHandler_InfoDebug(char **pCmd,const char *pStrCopy,char *pOutStream)
 {
-	u8 *Buf=Q_Malloc(512);
+	u8 *Buf=Q_Zalloc(512);
 
 	if(strcmp((void *)pCmd[0],"dev")==0)	
 	{
@@ -376,6 +371,8 @@ static bool __inline SysCmdHandler_InfoDebug(char **pCmd,const char *pStrCopy,ch
 					case SRT_VAR_UP_CONF:
 						CDebug("[Str%u:Var%u:Num%u]%s\n\r",pRcd->ID,pRcd->SubID,pRcd->Num,pRcd->Data);							
 						break;
+					default:
+						CDebug("[Str%u:Type%u]\n\r",pRcd->ID,pRcd->Type);
 				}
 			}
 			else
@@ -435,8 +432,8 @@ static bool __inline SysCmdHandler_InfoDebug(char **pCmd,const char *pStrCopy,ch
 							break;
 						case SIA_SYS_MSG:	
 							{
-								u8 *pStr=Q_Malloc(STR_RECORD_BYTES);
-								u8 *pUser=Q_Malloc(STR_RECORD_BYTES);
+								u8 *pStr=Q_Zalloc(STR_RECORD_BYTES);
+								u8 *pUser=Q_Zalloc(STR_RECORD_BYTES);
 
 								GetStrRecordData(pItems->Exc.Str.StrID,pStr);
 								GetStrRecordData(pItems->Exc.Str.UserID,pUser);
@@ -521,7 +518,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"new_scn")==0)
 	{
-		SCENE_RECORD *pScn=Q_Malloc(sizeof(SCENE_RECORD));
+		SCENE_RECORD *pScn=Q_Zalloc(sizeof(SCENE_RECORD));
 		SCENE_ITEM *pItems=pScn->Items;
 		u32 DevID=Str2Uint(pCmd[1]);
 		u16 Vid=Str2Uint(pCmd[2]);
@@ -556,7 +553,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"new_trig")==0)
 	{
-		TRIGGER_RECORD *pTrig=Q_Malloc(sizeof(TRIGGER_RECORD));
+		TRIGGER_RECORD *pTrig=Q_Zalloc(sizeof(TRIGGER_RECORD));
 		u32 WDev=Str2Uint(pCmd[1]);
 		u16 Oppo=Str2Uint(pCmd[2]);
 		
@@ -573,7 +570,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"new_str")==0)
 	{
-		STR_RECORD *pStr=Q_Malloc(sizeof(STR_RECORD));
+		STR_RECORD *pStr=Q_Zalloc(sizeof(STR_RECORD));
 		
 		pStr->ID=HL16_U32(GOT_NAME,ObjIdBase());
 		UpdateObjIdBase();
@@ -604,7 +601,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	{
 		INFO_TYPE Type=Str2Uint(pCmd[1]);
 		u32 AppID=Str2Uint(pCmd[2]);
-		u8 *Buf=Q_Malloc(512);
+		u8 *Buf=Q_Zalloc(512);
 
 		MemCpy(Buf,&AppID,4);
 		sprintf(&Buf[4],"%08x",AppID);
@@ -642,7 +639,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"read")==0)	
 	{
-		u8 *Buf=Q_Malloc(512);
+		u8 *Buf=Q_Zalloc(512);
 		u32 *pID=(void *)Buf;
 		INFO_TYPE Type=Str2Uint(pCmd[1]);
 		u32 Idx=Str2Uint(pCmd[2]);
@@ -657,7 +654,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"read_bulk")==0)	
 	{
-		u8 *Buf=Q_Malloc(512);
+		u8 *Buf=Q_Zalloc(512);
 		u32 *pID=(void *)Buf;
 		INFO_TYPE Type=Str2Uint(pCmd[1]);
 		u32 Total=GetTypeInfoTotal(Type);
@@ -679,7 +676,7 @@ static bool __inline SysCmdHandler_Info(char **pCmd,const char *pStrCopy,char *p
 	}
 	else if(strcmp((void *)pCmd[0],"readid")==0)	
 	{
-		u8 *Buf=Q_Malloc(512);
+		u8 *Buf=Q_Zalloc(512);
 		u32 *pID=(void *)Buf;
 		
 		ReadInfoByID(Str2Uint(pCmd[1]),Str2Uint(pCmd[2]),Buf);
@@ -797,13 +794,14 @@ static bool __inline SysCmdHandler_I(char **pCmd,const char *pStrCopy,char *pOut
 
 static bool __inline SysCmdHandler_J(char **pCmd,const char *pStrCopy,char *pOutStream)
 {
-	if(strcmp((void *)pCmd[0],"json")==0)
+	//设置json服务器地址，路径可带端口
+	if(strcmp((void *)pCmd[0],"json")==0)//涉及手机交互，自动保存
 	{
 		char *p1=strchr((void *)&pStrCopy[5],'.');
 		char *p2=strchr((void *)&pStrCopy[5],' ');
 		if(p1==NULL || p2!=NULL)
 		{
-			Debug("srv addr error!\n\r");
+			CDebug("srv addr error!\n\r");
 			return TRUE;
 		}
 		
@@ -811,19 +809,19 @@ static bool __inline SysCmdHandler_J(char **pCmd,const char *pStrCopy,char *pOut
 		QDB_BurnToSpiFlash(SDN_SYS);
 		return TRUE;
 	}
-	else if(strcmp((void *)pCmd[0],"jsonp")==0)
+	else if(strcmp((void *)pCmd[0],"jsonp")==0)//修改上报周期限制
 	{
 		u32 Idx=Str2Uint(pCmd[1]);
 
 		if(Idx)
 		{
 			QDB_SetNum(SDN_SYS,SIN_DataUpPeriod,Idx);
-			Debug("Set json up period to %umS\n\r",PeriodIdx2Ms(Idx));
+			CDebug("Set json up period to %umS\n\r",PeriodIdx2Ms(Idx));
 		}
 		else
 		{
 			Idx=QDB_GetNum(SDN_SYS,SIN_DataUpPeriod);
-			Debug("Json up period is %umS\n\r",PeriodIdx2Ms(Idx));
+			CDebug("Json up period is %umS\n\r",PeriodIdx2Ms(Idx));
 		}
 
 		return TRUE;
@@ -839,7 +837,7 @@ static bool __inline SysCmdHandler_K(char **pCmd,const char *pStrCopy,char *pOut
 		u32 Pin=Str2Uint(pCmd[1]);
 		u32 Arg=Str2Uint(pCmd[2]);
 		
-		Debug("Simulation app key %u\r\n",Pin*1000+Arg);
+		CDebug("Simulation app key %u\r\n",Pin*1000+Arg);
 		SysEventSend(SEN_PIN_CHANGE,Pin*1000+Arg,NULL,NULL);
 		return TRUE;
 	}
@@ -862,7 +860,36 @@ static bool __inline SysCmdHandler_K(char **pCmd,const char *pStrCopy,char *pOut
 }
 
 static bool __inline SysCmdHandler_L(char **pCmd,const char *pStrCopy,char *pOutStream)
-{return FALSE;}
+{
+	if(strcmp((void *)pCmd[0],"lcdvar")==0)//涉及手机交互，自动保存
+	{
+		if(IsNullStr(pCmd[1]))
+		{
+			Sys_DbDebug(1);
+			return TRUE;
+		}		
+		else if(NotNullStr(pCmd[3]))
+		{
+			u32 LcdIdx=Str2Uint(pCmd[1]);
+			u32 VarId=Str2Uint(pCmd[2])&0xffff;
+
+			if(LcdIdx && GetVarState(VarId,NULL)!=VST_NOT_FOUND)
+			{
+				QDB_SetValue(SDN_SYS,SIN_LcdVars,VarId,NULL,LcdIdx-1);	
+				QDB_SetValue(SDN_SYS,SIN_LcdVarsName,LcdIdx-1,pCmd[3],strlen(pCmd[3]));
+				QDB_BurnToSpiFlash(SDN_SYS);
+			}
+			else
+			{
+				CDebug("LcdVar %u Set Faild!\n\r",VarId);
+			}
+			
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
 
 static bool __inline SysCmdHandler_M(char **pCmd,const char *pStrCopy,char *pOutStream)
 {return FALSE;}
@@ -901,14 +928,9 @@ static bool __inline SysCmdHandler_P(char **pCmd,const char *pStrCopy,char *pOut
 {
 	if(strcmp((void *)pCmd[0],"pw")==0)
 	{
-		if(IsNullStr(pCmd[1]))
+		if(NotNullStr(pCmd[1]))
 		{
-			QDB_SetNum(SDN_SYS,SIN_UserPwHash,MakeHash33("888888",6));
-			QDB_BurnToSpiFlash(SDN_SYS);
-		}
-		else
-		{
-			Debug("Set New Password:%s\n\r",pCmd[1]);
+			CDebug("Set New Password:%s\n\r",pCmd[1]);
 			QDB_SetNum(SDN_SYS,SIN_UserPwHash,MakeHash33(pCmd[1],strlen((void *)pCmd[1])));
 			QDB_BurnToSpiFlash(SDN_SYS);
 		}
@@ -951,11 +973,11 @@ static bool __inline SysCmdHandler_P(char **pCmd,const char *pStrCopy,char *pOut
 		{
 			if(Pin<16)
 			{
-				Debug("Pin %u=%u\n\r",Pin,GPIO_INPUT_GET(GPIO_ID_PIN(Pin)));
+				CDebug("Pin %u=%u\n\r",Pin,GPIO_INPUT_GET(GPIO_ID_PIN(Pin)));
 			}
 			else if(Pin==16)
 			{
-				Debug("Pin %u=%u\n\r",Pin,gpio16_input_get());
+				CDebug("Pin %u=%u\n\r",Pin,gpio16_input_get());
 			}
 		}
 		
@@ -993,7 +1015,7 @@ static bool __inline SysCmdHandler_P(char **pCmd,const char *pStrCopy,char *pOut
 
 bool MyList_FreeItemTest(QLIST_ITEM_H *pItem)
 {
-	Debug("Free 0x%x\n\r",pItem);
+	CDebug("Free 0x%x\n\r",pItem);
 	return TRUE;
 }
 
@@ -1063,7 +1085,7 @@ static bool __inline SysCmdHandler_Q(char **pCmd,const char *pStrCopy,char *pOut
 		
 		QList_ReadItemByFilter(&gQList,(void *)MyList_FilterTest2,&Item,&Ret);
 
-		Debug("Read[%u]%u(0x%x)\n\r",Ret.ID,*(u32 *)Ret.Data,*(u32 *)Ret.Data);
+		CDebug("Read[%u]%u(0x%x)\n\r",Ret.ID,*(u32 *)Ret.Data,*(u32 *)Ret.Data);
 		return TRUE;
 	}
 
@@ -1104,7 +1126,7 @@ static bool __inline SysCmdHandler_R(char **pCmd,const char *pStrCopy,char *pOut
 			
 			if(Num && Num<=FLASH_SECTOR_BYTES)
 			{
-				u8 *pData=Q_Malloc(Num);
+				u8 *pData=Q_Zalloc(Num);
 				SpiFlsReadData(Sec*FLASH_SECTOR_BYTES+Start,Num,(void *)pData);
 				CDebug("Sec %u Data:\r\n",Sec);
 				DisplayBuf(pData,Num,16);
@@ -1136,7 +1158,7 @@ static bool __inline SysCmdHandler_R(char **pCmd,const char *pStrCopy,char *pOut
 			
 			if(Num && Num<=FLASH_SECTOR_BYTES)
 			{
-				u8 *pData=Q_Malloc(Num);
+				u8 *pData=Q_Zalloc(Num);
 				SpiFlsReadData(Sec*FLASH_SECTOR_BYTES+Start,Num,(void *)pData);
 				CDebug("Sec %u str:\r\n",Sec);
 				{
@@ -1178,7 +1200,7 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 	{
 		if(NotNullStr(pCmd[1]) && NotNullStr(pCmd[2]))
 		{
-			struct station_config *pStaConfig=Q_Malloc(sizeof(struct station_config));
+			struct station_config *pStaConfig=Q_Zalloc(sizeof(struct station_config));
 
 			StrChrRep(pCmd[1],'^',' ');//替换^为空格
 			StrChrRep(pCmd[2],'^',' ');//替换^为空格
@@ -1191,7 +1213,7 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 			Q_Free(pStaConfig);
 			return TRUE;
 		}	
-	}	
+	}
 	else if(strcmp((void *)pCmd[0],"sta_only")==0)
 	{
 		wifi_set_opmode(STATION_MODE);
@@ -1202,7 +1224,6 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 		//打印各种调试中经常用到的变量
 		CDebug("sizeof(GLOBA_PKT_HEADER)=%d\r\n",sizeof(GLOBA_PKT_HEADER));
 		CDebug("sizeof(SYS_PARAM_PKT)=%d\r\n",sizeof(SYS_PARAM_PKT));
-		CDebug("sizeof(QH_RECORD)=%d\r\n",sizeof(QH_RECORD));
 		CDebug("\n\r");
 		
 		CDebug("sizeof(STR_RECORD)=%d\r\n",sizeof(STR_RECORD));		
@@ -1229,7 +1250,7 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 		
 		return TRUE;
 	}
-	else if(strcmp((void *)pCmd[0],"srv")==0)
+	else if(strcmp((void *)pCmd[0],"srv")==0)//涉及手机交互，自动保存
 	{
 		if(IsNullStr(pCmd[1]))//打印当前信息
 		{
@@ -1241,7 +1262,7 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 			
 			if(pOutStream==NULL)
 			{
-				pOutStream=Q_Malloc(1024);
+				pOutStream=Q_Zalloc(1024);
 				NeedFree=TRUE;
 			}
 			
@@ -1264,7 +1285,7 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 			
 			return TRUE;
 		}	
-		else
+		else //有参数1
 		{
 			if(strcmp((void *)pCmd[1],"del")==0)
 			{
@@ -1272,13 +1293,13 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 				DeleteJsonConn();
 				return TRUE;
 			}
-			else
+			else //设置服务器地址，路径可带端口
 			{				
 				char *p1=strchr((void *)&pStrCopy[4],'.');
 				char *p2=strchr((void *)&pStrCopy[4],' ');
 				if(p1==NULL || p2!=NULL)
 				{
-					Debug("srv addr error!\n\r");
+					CDebug("srv addr error!\n\r");
 					return TRUE;
 				}
 				
@@ -1298,8 +1319,8 @@ static bool __inline SysCmdHandler_S(char **pCmd,const char *pStrCopy,char *pOut
 		s32 Num;
 		const char *p=FindNumFromStr(pCmd[1],&Num);
 
-		if(p)	Debug("num:%d|%s\n\r",Num,p);
-		else Debug("num:%d|null\n\r",Num);
+		if(p)	CDebug("num:%d|%s\n\r",Num,p);
+		else CDebug("num:%d|null\n\r",Num);
 		return TRUE;
 	}
 	
@@ -1311,8 +1332,9 @@ static bool __inline SysCmdHandler_T(char **pCmd,const char *pStrCopy,char *pOut
 	if(strcmp((void *)pCmd[0],"test")==0)
 	{
 		//QDB_SetValue(SDN_SYS,SIN_LcdVarsName,0,pCmd[1],strlen(pCmd[1]));		
-		u16 Idx=Str2Uint(pCmd[1]);
-		spi_flash_erase_sector(Idx);
+		//u16 Idx=Str2Uint(pCmd[1]);
+		//spi_flash_erase_sector(Idx);
+
 		return TRUE;
 	}
 
@@ -1335,11 +1357,11 @@ static bool __inline SysCmdHandler_V(char **pCmd,const char *pStrCopy,char *pOut
 
 				if(SetVarVal(Vid,Val,VRT_SYS,0))
 				{
-					Debug("SetVar[%u]=%d(0x%x)!\n\r",Vid,Val,Val);
+					CDebug("SetVar[%u]=%d(0x%x)!\n\r",Vid,Val,Val);
 				}
 				else
 				{
-					Debug("SetVar[%u] Faild!\n\r",Vid);
+					CDebug("SetVar[%u] Faild!\n\r",Vid);
 				}				
 			}
 			else //read
@@ -1349,9 +1371,9 @@ static bool __inline SysCmdHandler_V(char **pCmd,const char *pStrCopy,char *pOut
 				VAR_STATE State=GetVarState(Vid,&Val);
 
 				if(State==VST_VALID)
-					Debug("Var[%u]=%d(0x%x)\n\r",Vid,Val,Val);
+					CDebug("Var[%u]=%d(0x%x)\n\r",Vid,Val,Val);
 				else
-					Debug("Var[%u]=%d(0x%x), NoVaild\n\r",Vid,Val,Val);
+					CDebug("Var[%u]=%d(0x%x), NoVaild\n\r",Vid,Val,Val);
 			}
 		}
 		return TRUE;
@@ -1391,7 +1413,7 @@ static bool __inline SysCmdHandler_Y(char **pCmd,const char *pStrCopy,char *pOut
 static bool __inline SysCmdHandler_Z(char **pCmd,const char *pStrCopy,char *pOutStream)
 {return FALSE;}
 
-bool CustomCmdHandler(char **pCmd,const char *pStrCopy,char *pOutStream);
+bool UserCmdHandler(char **pCmd,const char *pStrCopy,char *pOutStream);
 
 typedef bool (*pCmdHandler)(char **,const char *,char *);
 const pCmdHandler gpCmdHandlers[]={
@@ -1440,19 +1462,20 @@ bool SysCmdHandler(u16 Len,const char *pStr,char *pOutStream)
 
 	for(i=0;i<(UART_CMD_MAX_PARAM_NUM+1);i++) pParam[i]=NULL;
 
-	pBuf=Q_Malloc(Len+2);
+	pBuf=Q_Zalloc(Len+2);
 	StrCmdParse(pStr,pParam,pBuf,TRUE);//解析指令和参数
+	strlwr(pParam[0]);//命令名改小写
 	CDebug("\r\n");
-	
-	FirstByts=pParam[0][0];
-	if(FirstByts=='#') Res=CustomCmdHandler(pParam,pStr,pOutStream);
+
+
+	FirstByts=pStr[0];
+	if(FirstByts=='#') Res=UserCmdHandler(pParam,pStr,pOutStream);
 	else if(FirstByts>='a' && FirstByts<='z') Res=gpCmdHandlers[FirstByts-'a'](pParam,pStr,pOutStream);
 	else Res=FALSE;
 	
 	if(Res==FALSE) 
 	{
-		if(FirstByts=='#') UDebug("#err\r");
-		else CDebug("No Such Cmd[%u]:%s\r\n",Len,pBuf);
+		if(FirstByts!='#') CDebug("No Such Cmd[%u]:%s\r\n",Len,pBuf);
 	}
 	
 	Q_Free(pBuf);

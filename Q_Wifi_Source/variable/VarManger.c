@@ -129,13 +129,13 @@ void VarListNewOne(VAR_LIST_ITEM *pNew)
 	OS_EnterCritical();
 	if(gpVarList==NULL)
 	{
-		gpVarList=Q_Malloc(sizeof(VAR_LIST_ITEM));
+		gpVarList=Q_ZallocAsyn(sizeof(VAR_LIST_ITEM));
 		MemCpy((void *)gpVarList,pNew,sizeof(VAR_LIST_ITEM));
 		gpVarList->pNext=NULL;
 	}
 	else
 	{
-		VAR_LIST_ITEM *p=Q_Malloc(sizeof(VAR_LIST_ITEM));
+		VAR_LIST_ITEM *p=Q_ZallocAsyn(sizeof(VAR_LIST_ITEM));
 		MemCpy(p,pNew,sizeof(VAR_LIST_ITEM));
 		p->pNext=NULL;
 		
@@ -148,7 +148,7 @@ void VarListNewOne(VAR_LIST_ITEM *pNew)
 //从数据库读取设备的waddr
 static u32 GetVarMainDevWAddrFromInfo(u16 MainDevID)
 {
-	DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+	DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 	INFO_IDX Idx=1;
 	u16 Res=1;
 	u32 DevInfoID=HL16_U32(GOT_DEVICE,MainDevID);
@@ -184,7 +184,7 @@ static void VarCreate_ByRecord(u32 VarID,void *pInfoRcd)
 
 	if(pInfoRcd==NULL)
 	{
-		pVarRcd=Q_Malloc(sizeof(VARIABLE_RECORD));
+		pVarRcd=Q_Zalloc(sizeof(VARIABLE_RECORD));
 		Res=ReadInfoByID(IFT_VARIABLE,VarID,pVarRcd);
 	}
 	else
@@ -194,7 +194,7 @@ static void VarCreate_ByRecord(u32 VarID,void *pInfoRcd)
 	
 	if(Res && pVarRcd->ID)
 	{
-		VAR_LIST_ITEM *pVar=Q_Malloc(sizeof(VAR_LIST_ITEM));
+		VAR_LIST_ITEM *pVar=Q_Zalloc(sizeof(VAR_LIST_ITEM));
 		pVar->Vid=pVarRcd->ID;
 		pVar->Type=pVarRcd->VarType;
 		pVar->ReadOnly=pVarRcd->ReadOnly;
@@ -238,7 +238,7 @@ static void VarCreate_ByRecord(u32 VarID,void *pInfoRcd)
 //建立关联变量和设备的关系
 static void BuildDevVarRelation(void)
 {
-	DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+	DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 	INFO_IDX Idx=1;
 	u16 Res=1;
 	
@@ -279,8 +279,8 @@ void VarListInit(void)
 
 	//从数据库读取信息
 	{
-		VARIABLE_RECORD *pVarRcd=Q_Malloc(sizeof(VARIABLE_RECORD));
-		VAR_LIST_ITEM *pVar=Q_Malloc(sizeof(VAR_LIST_ITEM));
+		VARIABLE_RECORD *pVarRcd=Q_Zalloc(sizeof(VARIABLE_RECORD));
+		VAR_LIST_ITEM *pVar=Q_Zalloc(sizeof(VAR_LIST_ITEM));
 		INFO_IDX Idx=1;
 		u16 Res=1;
 		
@@ -290,7 +290,6 @@ void VarListInit(void)
 			if(Res && pVarRcd->ID)
 			{
 				//Debug("Has[%c%c%c%c.%c%c%c%c]\n\r",DispVarTagp(pVarRcd));
-				SetSysVarHave(TagNum(pVarRcd->ProdTag.Char),TagNum(pVarRcd->VarTag.Char));//检查系统变量是否存在
 				VarCreate_ByRecord(pVarRcd->ID,NULL);//插入到list中
 			}
 		}
@@ -300,7 +299,7 @@ void VarListInit(void)
 	}
 	
 	//如果系统变量有不存在的，则新建数据库
-	CheckAllSysVarHave(FALSE); 
+	//CheckAllSysVarHave(FALSE); 
 
 	//建立关联变量和设备的关系
 	//BuildDevVarRelation();//esp8266不需要
@@ -502,7 +501,7 @@ u16 GetRelVarVid_ByWAddr(u32 MainWAddr,u8 RelIdx)
 
 	if(DevID)
 	{
-		DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+		DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 		u16 Res=ReadInfoByID(IFT_DEV,DevID,pDev);
 		if(Res && pDev->ID && ProdIsWav(pDev->ProdID))
 		{				
@@ -577,7 +576,7 @@ u16 FindVarId_ByDev(u32 DevID,u8 Idx,VAR_IDX_T VarIdxType)
 	{
 		if(Idx>=1 && Idx<=RELATE_VAR_MAX)
 		{
-			DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+			DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 			u16 Res=ReadInfoByID(IFT_DEV,DevID,pDev);
 			if(Res && pDev->ID && ProdIsWav(pDev->ProdID))
 			{				
@@ -649,7 +648,7 @@ void VaildAllSysVars(void)
 	//正式处理
 	if(VarNum)
 	{
-		pInfoList=Q_Malloc(VarNum*sizeof(VAR_CHANGE_INFO));
+		pInfoList=Q_Zalloc(VarNum*sizeof(VAR_CHANGE_INFO));
 		p=gpVarList;
 		while(p)
 		{
@@ -699,7 +698,7 @@ void SetVarInvaild_ByDev(u32 WDevAddr)
 	//正式处理
 	if(VarNum)
 	{
-		pInfoList=Q_Malloc(VarNum*sizeof(VAR_CHANGE_INFO));
+		pInfoList=Q_Zalloc(VarNum*sizeof(VAR_CHANGE_INFO));
 		p=gpVarList;
 		while(p)
 		{
@@ -1222,7 +1221,7 @@ static void VarDelete(u32 Vid)
 //增加wav设备后，用来增加对应的变量，关联变量
 static void UpdateVars_NewDev(u32 DevID)
 {
-	DEVICE_RECORD *pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+	DEVICE_RECORD *pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 	u16 Res=0;
 	
 	Res=ReadInfoByID(IFT_DEV,DevID,pDev);
@@ -1230,7 +1229,7 @@ static void UpdateVars_NewDev(u32 DevID)
 	{
 		//建立自身变量
 		{
-			VARIABLE_RECORD *pVarRcd=Q_Malloc(sizeof(VARIABLE_RECORD));
+			VARIABLE_RECORD *pVarRcd=Q_Zalloc(sizeof(VARIABLE_RECORD));
 			INFO_IDX Idx=1;
 			u16 vRes=1;
 
@@ -1270,7 +1269,7 @@ static void UpdateVars_DeleteDev(u32 DevID)
 
 	if(DevID==0) return;
 
-	pDev=Q_Malloc(sizeof(DEVICE_RECORD));
+	pDev=Q_Zalloc(sizeof(DEVICE_RECORD));
 	
 	if(ReadInfoByID(IFT_DEV,DevID,pDev))
 	{

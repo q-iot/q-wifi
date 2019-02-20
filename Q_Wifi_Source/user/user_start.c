@@ -9,7 +9,7 @@
 void DispWifiStation(void)
 {
 	u16 ap_id=wifi_station_get_current_ap_id();
-	struct station_config *pConfig=Q_Malloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
+	struct station_config *pConfig=Q_Zalloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
 	struct ip_info ip_config;	
 	u16 i;
 	
@@ -50,7 +50,7 @@ void DispWifiStation(void)
 void DispWifiAp(void)
 {
 	struct station_info * station = wifi_softap_get_station_info();
-	struct softap_config *ap_config = (struct softap_config *)Q_Malloc(sizeof(struct softap_config)); // initialization
+	struct softap_config *ap_config = (struct softap_config *)Q_Zalloc(sizeof(struct softap_config)); // initialization
 	struct ip_info ip_config;	
 		
 	wifi_softap_get_config(ap_config); // Get soft-AP ap_config first.
@@ -136,26 +136,28 @@ static void WifiConfig_Task(void *pvParameters)
 	TcpClient_Init();//获取到局域网ip了，再去登陆远程服务器
 	JsonClient_Init();//连接大数据服务器
 
-	while(SysVars()->JsonConnStaus!=SCS_FOUND_SRV)//等待连接，发送一条登陆信息
-	{
-		OS_TaskDelaySec(1);
-		
-	}
 
 
 
 
-	
+
+
+
+
+
+
+
 	
 	if(0){//定时器示范
-		OS_TIMER_T *pTimer1=Q_Malloc(sizeof(OS_TIMER_T));
+		OS_TIMER_T *pTimer1=Q_ZallocAsyn(sizeof(OS_TIMER_T));
 		OS_TimerDeinit(pTimer1);
 		OS_TimerSetCallback(pTimer1,Timer1_Cb,pTimer1);
 		OS_TimerInit(pTimer1,1000,FALSE);	
 	}
 
 
-	while(1){
+	//while(1)
+	{
 		OS_TaskDelaySec(10);
 
 		if(0)
@@ -220,7 +222,7 @@ void wifi_handle_event_cb(System_Event_t *evt)
 
 			if(evt->event_info.disconnected.reason==REASON_NO_AP_FOUND)//更换apid
 			{
-				struct station_config *pConfig=Q_Malloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
+				struct station_config *pConfig=Q_Zalloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
 				u16 ApId=wifi_station_get_current_ap_id();
 				u16 NextId=((ApId+1)==ESP_AP_RECORD_NUM)?0:ApId+1;
 				u16 i;
@@ -284,12 +286,12 @@ void StartSys_Task(void *pvParameters)
 		SysVars()->DutRegSnIsOk=TRUE;
     }    
 
-    //由于要使用数据库的数据，所以此刻才能初始化lwip
-	LwIP_CommInit();//初始化lwip
-
 	GpioHwInit();//gpio初始化，获取到是否需要支持uart交换，oled支持等信息
 	if(SysVars()->SwapUartOut) system_uart_swap();//交换串口0引脚	
 	if(SysVars()->SupportLCD) Oled_Init();
+
+    //由于要使用数据库的数据，所以此刻才能初始化lwip
+	LwIP_CommInit();//初始化lwip
 
   	//SigRecordTidy();//删除无主的信号记录
   	VarRecordTidy();//删除无主的设备变量记录
@@ -298,7 +300,6 @@ void StartSys_Task(void *pvParameters)
   	StrRecordTidy();//删除无主的冗余字符串
 
     Debug("SoftVer %u\n\r",QDB_GetNum(SDN_SYS,SIN_SoftVer));
-    //system_print_meminfo();
 
 	AppClientInit();//初始化用户列表
 	VarListInit();//变量初始化
@@ -313,9 +314,9 @@ void StartSys_Task(void *pvParameters)
 	Debug("System Init Finish!\n\r");
 
 	wifi_set_event_handler_cb(wifi_handle_event_cb);
-	OS_TaskCreate(InformEventTask,"InformEvent Task",512,NULL,TASK_INFORM_EVENT_PRIO,NULL);
-	OS_TaskCreate(SysEventTask,"SysEvent Task",512,NULL,TASK_SYS_EVENT_PRIO,NULL);
-    OS_TaskCreate(WifiConfig_Task, "WifiConfig Task",512,NULL,TASK_MAIN_PRIO,NULL); 
+	OS_TaskCreate(InformEventTask,"InformEvent Task",256,NULL,TASK_INFORM_EVENT_PRIO,NULL);
+	OS_TaskCreate(SysEventTask,"SysEvent Task",400,NULL,TASK_SYS_EVENT_PRIO,NULL);
+    OS_TaskCreate(WifiConfig_Task, "WifiConfig Task",400,NULL,TASK_MAIN_PRIO,NULL); 
 	
     vTaskDelete(NULL);
 }

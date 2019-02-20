@@ -3,7 +3,7 @@
 
 #define ADMIN_DEBUG 1
 #define QWIFI_SOFT_VER 300
-#define RELEASE_DAY 190122
+#define RELEASE_DAY 190220
 
 #define SRV_FAILD_RETRY_MS (10*1000)//服务器连接失败的重试时间
 #define SRV_CONN_BEAT_S 30//客户端心跳包时间，单位秒
@@ -73,8 +73,8 @@
 
 //-----------------------------线程定义------------------------------------
 //堆栈大小定义，宽度为u32，所以实际分配字节是下列数目的4倍
-#define TASK_STK_SIZE_MIN  176
-#define TASK_STK_SIZE_NORMAL 256
+#define TASK_STK_SIZE_MIN  256
+#define TASK_STK_SIZE_NORMAL 400
 #define TASK_STK_SIZE_MAX  512
 
 //任务优先级定义

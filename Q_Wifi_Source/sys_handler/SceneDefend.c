@@ -2,7 +2,7 @@
 
 void ScnDefendDebug(void)
 {
-	ID_T *pList=Q_Malloc(sizeof(ID_T)*SCENE_MAX_NUM);
+	ID_T *pList=Q_Zalloc(sizeof(ID_T)*SCENE_MAX_NUM);
 	u16 ScnNum;
 	u16 i;
 
@@ -71,7 +71,7 @@ bool ScnIsActive(ID_T ScnID)
 bool ScnDefendListTidy(void)
 {
 	u16 ScnNum=QDB_GetValue(SDN_QCK,QIN_SCN_FLAG,0,NULL);
-	ID_T *pScnID=Q_Malloc(ScnNum*sizeof(ID_T));
+	ID_T *pScnID=Q_ZallocAsyn(ScnNum*sizeof(ID_T));
 	u16 i;
 	
 	QDB_GetValue(SDN_QCK,QIN_SCN_FLAG,0,pScnID);

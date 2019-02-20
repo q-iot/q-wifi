@@ -218,7 +218,7 @@ u32 Sys_GetValue(u16 Item,u32 IntParam,void *Val)
 	return 0;
 }
 
-bool Sys_SetValue(u16 Item,u32 IntParam,void *pParam,u16 ByteLen)
+bool Sys_SetValue(u16 Item,u32 IntParam,void *pParam,u16 Byte)
 {
 	switch(Item)
 	{
@@ -244,12 +244,12 @@ bool Sys_SetValue(u16 Item,u32 IntParam,void *pParam,u16 ByteLen)
 			if(pParam!=NULL) MemCpy(gSysDb.BackupDnsIp,pParam,4);
 			break;	
 		case SIN_ServerURL:
-			if(ByteLen < sizeof(gSysDb.ServerURL) && pParam!=NULL);
-				MemCpy((void *)gSysDb.ServerURL,pParam,ByteLen+1);
+			if(Byte < sizeof(gSysDb.ServerURL) && pParam!=NULL);
+				MemCpy((void *)gSysDb.ServerURL,pParam,Byte+1);
 			break;
 		case SIN_JsonServerURL:
-			if(ByteLen < sizeof(gSysDb.JsonServerURL) && pParam!=NULL);
-				MemCpy((void *)gSysDb.JsonServerURL,pParam,ByteLen+1);
+			if(Byte < sizeof(gSysDb.JsonServerURL) && pParam!=NULL);
+				MemCpy((void *)gSysDb.JsonServerURL,pParam,Byte+1);
 			break;
 		case SIN_SysIdBase:
 			break;
@@ -271,16 +271,16 @@ bool Sys_SetValue(u16 Item,u32 IntParam,void *pParam,u16 ByteLen)
 			gSysDb.UcomEnBits=IntParam&0xff;
 			break;
 		case SIN_LcdVars:
-			if(IntParam<F_LCD_VAR_DISP_NUM)	
-				if(pParam!=NULL) 
-					gSysDb.LcdDispVar[IntParam]=*(u16 *)pParam;
+			if(Byte<F_LCD_VAR_DISP_NUM)	
+				gSysDb.LcdDispVar[Byte]=IntParam&0xffff;
 			break;
 		case SIN_LcdVarsName:
 			if(IntParam<F_LCD_VAR_DISP_NUM)
 			{
-				if(pParam!=NULL && ByteLen && ByteLen < sizeof(gSysDb.LcdDispVarName[0])) 
+				if(pParam!=NULL && Byte && Byte < sizeof(gSysDb.LcdDispVarName[0])) 
 				{
-					MemCpy((void *)gSysDb.LcdDispVarName[IntParam],pParam,ByteLen+1);
+					MemCpy((void *)gSysDb.LcdDispVarName[IntParam],pParam,Byte);
+					gSysDb.LcdDispVarName[IntParam][sizeof(gSysDb.LcdDispVarName[0])-1]=0;
 				}
 			}
 			break;

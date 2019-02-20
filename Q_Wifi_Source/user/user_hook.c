@@ -158,7 +158,22 @@ void UserVarChangeHook(u16 VarID,TVAR32 VarValue)
 	
 	if(GetVarProdTag2(VarID,Tags)==TRUE)
 	{
-		UDebug("#var %s %d\r",Tags,VarValue);
+		switch(GetVarDispFat(VarID,NULL))
+		{
+			case VDF_U16:
+			case VDF_BIN:
+			case VDF_HEX:
+			case VDF_U32:
+				UDebug("#var %s %u\r",Tags,VarValue);
+				break;
+			case VDF_FLOAT:
+				UDebug("#var %s %f\r",Tags,VarValue);
+				break;
+			default:
+				UDebug("#var %s %d\r",Tags,VarValue);
+		}
+		
+		
 	}
 }
 

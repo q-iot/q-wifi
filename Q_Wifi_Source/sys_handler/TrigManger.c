@@ -92,10 +92,10 @@ static bool JudgeVarState(VAR_TRIGGER *pVarState)
 #if 0
 	if(TrigID)//读取trig的var state
 	{
-		TRIGGER_RECORD *pRcd=Q_Malloc(sizeof(TRIGGER_RECORD));
+		TRIGGER_RECORD *pRcd=Q_Zalloc(sizeof(TRIGGER_RECORD));
 		u16 Bytes;
 
-		pVarState=pCheck=Q_Malloc(sizeof(VAR_TRIGGER));
+		pVarState=pCheck=Q_Zalloc(sizeof(VAR_TRIGGER));
 		
 		Bytes=ReadInfoByID(IFT_TRIGGER,TrigID,pRcd);
 		if(Bytes && pRcd->ID && pRcd->VarState.Vid)
@@ -317,7 +317,7 @@ void TrigListInit(void)
 
 	//从数据库读取信息，并添加和使能触发源
 	{
-		TRIGGER_RECORD *pRcd=Q_Malloc(sizeof(TRIGGER_RECORD));
+		TRIGGER_RECORD *pRcd=Q_Zalloc(sizeof(TRIGGER_RECORD));
 		u16 i,InfoNum=GetTypeInfoTotal(IFT_TRIGGER);
 		u16 Res;
 		
@@ -672,7 +672,7 @@ static void TrigAdd(TRIGGER_RECORD *pRcd)
 {
 	if(pRcd && pRcd->TrigType)
 	{
-		TRIG_LIST_ITEM *pItem=Q_Malloc(sizeof(TRIG_LIST_ITEM));
+		TRIG_LIST_ITEM *pItem=Q_ZallocAsyn(sizeof(TRIG_LIST_ITEM));
 		u16 Res;
 
 		TrigDelete(pRcd->ID);//删除旧的
@@ -685,7 +685,7 @@ static void TrigAdd(TRIGGER_RECORD *pRcd)
 
 		if(pRcd->VarState.Vid)
 		{
-			pItem->pVarState=Q_Malloc(sizeof(VAR_TRIGGER));
+			pItem->pVarState=Q_ZallocAsyn(sizeof(VAR_TRIGGER));
 			MemCpy(pItem->pVarState,&pRcd->VarState,sizeof(VAR_TRIGGER));
 		}
 		else

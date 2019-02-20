@@ -7,7 +7,7 @@ bool http_get_user_val_wifi(const char *pVarStr,char *pOutStr)
 {
 	if(strcmp(pVarStr,"wifi_ssid")==0)
 	{
-		struct station_config *pConfig=Q_Malloc(sizeof(struct station_config));
+		struct station_config *pConfig=Q_Zalloc(sizeof(struct station_config));
 		wifi_station_get_config_default(pConfig);
 		sprintf(pOutStr,"%s",pConfig->ssid);
 		Q_Free(pConfig);
@@ -15,7 +15,7 @@ bool http_get_user_val_wifi(const char *pVarStr,char *pOutStr)
 	}
 	else if(strcmp(pVarStr,"wifi_ssid_v")==0)
 	{
-		struct station_config *pConfig=Q_Malloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
+		struct station_config *pConfig=Q_Zalloc(ESP_AP_RECORD_NUM*sizeof(struct station_config));
 		u16 ap_id=wifi_station_get_current_ap_id();
 		u16 i;
 		
@@ -82,7 +82,7 @@ bool http_get_user_val_ap(const char *pVarStr,char *pOutStr)
 {
 	if(strcmp(pVarStr,"ap_ssid")==0)
 	{
-		struct softap_config *pConfig = (struct softap_config *)Q_Malloc(sizeof(struct softap_config)); // initialization
+		struct softap_config *pConfig = (struct softap_config *)Q_Zalloc(sizeof(struct softap_config)); // initialization
 		wifi_softap_get_config(pConfig);
 		sprintf(pOutStr,"%s",pConfig->ssid);
 		//Debug("Ap:%s:%s, %s\n\r",pConfig->ssid,pConfig->password,gNameAuthMode[pConfig->authmode]);
@@ -91,7 +91,7 @@ bool http_get_user_val_ap(const char *pVarStr,char *pOutStr)
 	}
 	else if(strcmp(pVarStr,"ap_pw")==0)
 	{
-		struct softap_config *pConfig = (struct softap_config *)Q_Malloc(sizeof(struct softap_config)); // initialization
+		struct softap_config *pConfig = (struct softap_config *)Q_Zalloc(sizeof(struct softap_config)); // initialization
 		wifi_softap_get_config(pConfig);
 		sprintf(pOutStr,"%s",pConfig->password);
 		//Debug("Ap:%s:%s, %s\n\r",pConfig->ssid,pConfig->password,gNameAuthMode[pConfig->authmode]);
@@ -466,7 +466,7 @@ const char *http_post_user_handler(const char *pUrl,u16 ParamNum,const char **pP
 		//逻辑处理
 		if(pSsid!=NULL && pPw!=NULL)
 		{
-			struct station_config *pStaConfig=Q_Malloc(sizeof(struct station_config));
+			struct station_config *pStaConfig=Q_Zalloc(sizeof(struct station_config));
 			sprintf(pStaConfig->ssid,pSsid);
 			sprintf(pStaConfig->password,pPw);	
 			wifi_station_set_config(pStaConfig);
@@ -492,7 +492,7 @@ const char *http_post_user_handler(const char *pUrl,u16 ParamNum,const char **pP
 		//逻辑处理
 		if(pSsid!=NULL && pPw!=NULL)
 		{
-			struct softap_config *ap_config = (struct softap_config *)Q_Malloc(sizeof(struct softap_config)); // initialization
+			struct softap_config *ap_config = Q_ZallocAsyn(sizeof(struct softap_config)); // initialization
 			wifi_softap_get_config(ap_config); // Get soft-AP ap_config first.
 			sprintf(ap_config->ssid, pSsid);
 			sprintf(ap_config->password, pPw);
@@ -690,10 +690,10 @@ const char *http_post_user_handler(const char *pUrl,u16 ParamNum,const char **pP
 		if(NeedBurn) QDB_BurnToSpiFlash(SDN_HWC);
 		return "/msg?tip=35&btn=12&url=%2Fmisc";
 	}
-	else if(strcmp(pUrl,"/reset.set")==0)//4reset
+	else if(strcmp(pUrl,"/reboot.set")==0)//4reset
 	{
 		Debug("Web Need Dut Reboot!\n\r");
-		RebootBoard();
+		SysEventMsSend(3000,SEN_CB_FUNC,0,RebootBoard,MFM_COVER);
 		return "";
 	}
 	else if(strcmp(pUrl,"/open.set")==0)//4open

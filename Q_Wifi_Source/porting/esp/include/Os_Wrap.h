@@ -1,7 +1,6 @@
 #ifndef QSYS_OS_WRAP_H
 #define QSYS_OS_WRAP_H
 
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -81,7 +80,6 @@
 #define OS_SemGive_ISR xSemaphoreGiveFromISR
 
 
-void OS_GetAllTaskInfo(void);
 
 #define OS_TIMER_T os_timer_t
 #define OS_TIMER_FUNC_T os_timer_func_t
@@ -89,7 +87,8 @@ void OS_GetAllTaskInfo(void);
 #define OS_TimerDeinit os_timer_disarm
 #define OS_TimerSetCallback os_timer_setfn
 
-#define Q_HeapFreeSize system_get_free_heap_size
+void OS_TaskStackOverflowHook(OS_TASK_T *pxTask, signed char *pcTaskName);
+void OS_GetAllTaskInfo(void);
 
 
 #endif			

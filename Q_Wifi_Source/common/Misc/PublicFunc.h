@@ -1,12 +1,12 @@
-#ifndef QSYS_PUBLIC_FUNC_H
-#define QSYS_PUBLIC_FUNC_H
+#ifndef __Q_PUBLIC_FUNC_H__
+#define __Q_PUBLIC_FUNC_H__
 
 
 //2									¹«ÓÃº¯Êý	(PublicFunc.c)						
 
 #if 1
-void MemSet(void *Dst,u8 C,u16 Byte);
-void MemCpy(void *Dst,const void *Src,u16 Byte);
+void MemSet(void *Dst,u8 C,u32 Byte);
+void MemCpy(void *Dst,const void *Src,u32 Byte);
 #else
 #define MemSet memset
 #define MemCpy memcpy
@@ -30,10 +30,10 @@ char *Ip2Str(void *pIp);
 bool Str2Ip(const char *pStr,u8 *Ip);
 void StrChrRep(char *pStr,char Orgc,char Repc);
 const char *FindNumFromStr(const char *pStr,s32 *pNumRet);
-void Str2Lower(char *pStr);
 bool IsNullStr(char *pStr);
 bool NotNullStr(char *p);
 u16 StrnCmp(const char *pStr1,const char *pStr2,u16 Bytes);
+u16 StrnCpy(char *pDst,const char *pSrc,u16 Bytes);
 char *ChkStr(const char *pStr1, const char *pStr2 );
 char *FindStr(char *pStr,char *pStrStart,char *pStrEnd);
 

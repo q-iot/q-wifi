@@ -1,581 +1,539 @@
-#include "SysDefines.h"
-#include "Os_Wrap.h"
+#include "esp_common.h"
+#include "PublicFunc.h"
 #include "Q_Heap.h"
+#include "Os_Wrap.h"
 
-//概述:这是一个简单的堆管理机制
-//其主要思想是将内存分配为若干个最小单元，申请内存时，会分配整数个最小单元的内存
-//因为将内存分配为最小单元了，所以用来记录内存块索引的变量只需要16位即可
-//如果最小单元是4byte，那么此代码可以管理的堆大小为0xffff的4倍
-//但实际上，16bit里面，最高1位用来表示内存块是否被使用，所以实际大小是0x7fff的4倍，
-//大约为130k的空间。如果需要管理更大空间，只需要提高最小单元的Byte数目即可。
-//此堆管理机制的额外开销有2部分
-// 1.需要一个记录表用来记录内存块信息(定义类型HEAP_RECORD)，每一块内存对应一个记录表成员
-//   这个记录表的大小MAX_RECORD_NUM可以根据实际情况修改
-// 2.当申请的空间不是最小单元的整数倍+2时，会有多余的内存消耗，最后2个字节用于存放防冲标记。
-//   例如当最小单元是4byte，如果申请大小为7，则实际分配的内存是12，为4的整数倍。
-//在堆分配时，为节省分配时间，此机制不负责将申请空间清零
-//该堆管理机制没有解决的问题:内存碎片
-//默认分配的地址8字节对齐
-
-//此堆管理可用于操作系统，也可以用于裸奔程序中
-//如用于裸奔程序，需修改如下几步
-// 1.修改堆大小，这个根据实际情况来，只需要修改Q_HEAP_SIZE_BYTE这个宏就行了
-// 2.修改记录块大小，每分配一次内存，会耗费一个记录块，可根据实际情况修改MAX_RECORD_NUM宏即可
-// 3.将三个关于临界区的宏定义成空的就行了:Q_HEAP_CRIT_SAVE_DATA_DEFINE、Q_HEAP_ENTER_CRIT、Q_HEAP_EXIT_CRIT
-// 4.如果需要管理的空间很大，那么你需要修改最小单元来适应，相关宏Q_HEAP_MINI_UNIT、Q_HEAP_UNIT_OFFSET
-
-#define Q_HEAP_TRACK_DEBUG Q_HEAP_DEBUG
+#if USE_Q_HEAP //为了与系统heap5并存
 
 #ifndef NULL
 #define NULL ((void *)0)
 #endif
 
-#if Q_HEAP_TRACK_DEBUG > 1
-#define Need_Debug 1
-#else
-#define Need_Debug 0
+#ifdef Debug
+#undef Debug
 #endif
+#define Debug printf
 
-#if Need_Debug
+#if Q_HEAP_DEBUG == 1 || Q_HEAP_DEBUG == 3
 #define QH_Debug Debug
 #else
 #define QH_Debug(x,y...)
 #endif
 
+#define Q_HEAP_PROG_CHECK 1//是否开启程序检查
+
 //为保证多线程下堆分配的原子操作，必须借助操作系统临界区
 //如果此机制不被用于多线程，则可以定义下面三个个宏为空白
 #define Q_HEAP_CRIT_SAVE_DATA_DEFINE 	//OS_CPU_SR cpu_sr
-#define Q_HEAP_ENTER_CRIT OS_EnterCritical()
-#define Q_HEAP_EXIT_CRIT OS_ExitCritical()
+#define Q_HEAP_ENTER_CRIT ETS_INTR_LOCK()
+#define Q_HEAP_EXIT_CRIT ETS_INTR_UNLOCK()
 
 //用来验证内存是否被冲毁的标识
 //占用2个字节，所以内存前后被冲毁而不能察觉的概率为65535分之1
-#define Q_HEAP_UNIT_REWRITE_ID 0x5808 //放置于每个被分配内存块末尾的冲毁标识
-#define Q_HEAP_REWRITE_ID ((Q_HEAP_UNIT_REWRITE_ID<<16)|0x1234) //heap整个内存区域前后的冲毁标识，将Q_HEAP_UNIT_REWRITE_ID放到高16位是为了防止第一块分配块被释放造成的检查问题
+#define Q_HEAP_RW_FLAG 0x5808 //放置于每个被分配内存块末尾的冲毁标识
+#define Q_HEAP_RW_FLAG32 ((Q_HEAP_RW_FLAG<<16)|0x1234) //heap整个内存区域前后的冲毁标识，将Q_HEAP_UNIT_REWRITE_ID放到高16位是为了防止第一块分配块被释放造成的检查问题
 
-//下面两个宏必须同时修改
-#define Q_HEAP_MINI_UNIT 8 //内存单元大小，单位Byte，考虑到32位处理器的4字节对齐，此值必须为4倍数
-#define Q_HEAP_UNIT_OFFSET 3 // 2的Q_HEAP_UNIT_OFFSET次方必须等于Q_HEAP_MINI_UNIT ,用于移位代替除法或乘法
-#define Q_HEAP_UNIT_MASK (Q_HEAP_MINI_UNIT-1)//用于和运算代替余运算
+//记录体
+typedef struct{
+	u16 RwFlag;//防冲毁标志
+	u16 MemIsIdle:1;//内存是否空闲
+	u16 AsynFree:1;//需要异步释放
+	u16 Line:14;//调用的行号
+	u32 Bytes;//Data所包含的字节数，必须是偶数
+	void *pPrev;//前一个
+	void *pNext;//后一个
+#if Q_HEAP_DEBUG > 1
+	const char *pFunc;//调用的函数名
+#endif
+	u16 Data[2];//内存，最后两个字节放防冲毁标志
+}QHEAP_ITEM;
 
-//内存块索引
-#define QH_GetUnitIdx(x) (gQpRecords[x].UnitIdx)//x为记录表序号，返回内存块的第一个单元索引
-#define QH_SetUnitIdx(x,Index) do{gQpRecords[x].UnitIdx=(Index);}while(0);
-#define QH_SetUnitNum(x,n) do{gQpRecords[x].UnitNum=(n);}//记录占用内存数目
-#define QH_GetUnitNum(x) (gQpRecords[x].UnitNum)//x为记录表序号，返回内存块占用单元数
-//#define UnitIdxEnd Q_HEAP_UNIT_MAX_NUM
-
-#define QH_GetMemIdle(x) (gQpRecords[x].MemIdle)
-#define QH_SetMemIdle(x,v) do{gQpRecords[x].MemIdle=(v);}while(0);
-#define QH_GetUsed(x) (gQpRecords[x].Used)
-#define QH_SetUsed(x,v) do{gQpRecords[x].Used=(v);}while(0);
-
-//操作链表，根据记录表序号获取下一个块对应记录表的序号
-#define QH_GetNext(x) (gQpRecords[x].Next)
-#define QH_SetNext(x,v) do{gQpRecords[x].Next=(v);}while(0);
-#define QH_GetPrev(x) (gQpRecords[x].Prev)
-#define QH_SetPrev(x,v) do{gQpRecords[x].Prev=(v);}while(0);
-
-#define QH_CleanRecord(x) do{MemSet(&gQpRecords[x],0,sizeof(QH_RECORD));}while(0);
-
-//For Track
-#if Q_HEAP_TRACK_DEBUG
-#define QH_SetCallerName(x,p) gQpRecords[x].pFuncName=(p)
-#define QH_SetCallerLine(x,s) gQpRecords[x].Line=(s)
-#define QH_GetCallerName(x) gQpRecords[x].pFuncName
-#define QH_GetCallerLine(x) gQpRecords[x].Line
+#if Q_HEAP_DEBUG > 1
+#define QH_ITEM_COMM_BYTES 20//Data之前的大小
+#define QH_ITEM_MIN_OCCUPY 36//一个item需要的最小占用bytes，包括头尾
 #else
-#define QH_SetCallerName(x,p)
-#define QH_SetCallerLine(x,s)
-#define QH_GetCallerName(x)
-#define QH_GetCallerLine(x)
+#define QH_ITEM_COMM_BYTES 16//Data之前的大小
+#define QH_ITEM_MIN_OCCUPY 32//一个item需要的最小占用bytes，包括头尾
 #endif
-
-//单元和字节的转换
-#define QH_Unit2Byte(U) ((U)<<Q_HEAP_UNIT_OFFSET) //转换单元数到字节数,用位移代替乘法
-#define QH_Byte2Unit(B) ((B)?((((B)-1)>>Q_HEAP_UNIT_OFFSET)+1):0) //转换字节数到占用单元数，用位移代替除法
-
-typedef struct {
-	u16 Used:1;//本记录有用
-	u16 MemIdle:1;//指向的内存块为空闲块
-	u16 Prev:14;//记录上一个内存块的记录表序号
-	u16 Next;//记录下一个内存块的记录表序号
-	u16 UnitIdx;//记录内存块起始单元位置
-	u16 UnitNum;//本块内存占用多少单元
-#if Q_HEAP_TRACK_DEBUG
-	const char *pFuncName;
-	u16 Line;
-#endif
-}QH_RECORD;
-#define QH_RECORD_MAX_NUM 300
-#define QH_RECORD_NULL 0
-#define QH_RECORD_START 1
-#define QH_RECORD_END (QH_RECORD_MAX_NUM-1)
-static QH_RECORD gQpRecords[QH_RECORD_MAX_NUM];//分配记录表
 
 //定义堆地址
 #define QH_HEAP_MEM_NUM 2
 static u32 *pQHeap[QH_HEAP_MEM_NUM];//起点必须8字节对齐
 static u32 *pQHeapEnd[QH_HEAP_MEM_NUM];
+static QHEAP_ITEM *gpItemHdr=NULL;
 
-//用于调试
-void DebugHeap(void)
+//堆实体
+extern char _heap_start; //_heap_start - 0x40000000
+extern char _lit4_end; //_lit4_end - 0x4010C000 iram
+
+//调试
+void QHeapDebug(void)
 {
-	u16 Index;//表示块的起始单元
+	QHEAP_ITEM *pItem=NULL;
+	QHEAP_ITEM *p=NULL;
+	u16 m;
 	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
+
+	Debug("-------------------------------------------------------------------------\n\r");
+	Q_HEAP_ENTER_CRIT;	
+	for(m=0;m<QH_HEAP_MEM_NUM;m++)
+	{
+		Debug("Heap[%u] 0x%x - 0x%x %u Byts\n\r",m,pQHeap[m],pQHeapEnd[m],(u32)pQHeapEnd[m]-(u32)pQHeap[m]);
+	}
+
+	Debug("\n\r");
 	
-	Debug("\n\r--------------Heap Record--0x%08x----R:0x%08x-0x%08x--------\n\r",(u32)pQHeap->Heap,(u32)gQpRecords,(u32)gQpRecords+QH_RECORD_MAX_NUM*sizeof(QH_RECORD));
-	Q_HEAP_ENTER_CRIT;
-	for(Index=QH_RECORD_START;;Index=QH_GetNext(Index))
+	pItem=gpItemHdr;
+	while(pItem)
 	{
-		if(QH_GetMemIdle(Index))
-		{
-			DebugCol(" %3d ",Index);
-		}
-		else
-		{
-			Debug("[%3d]",Index);
-		}
-		
-		Debug(" Unit %4u-%4u, Addr %04x - %04x,%5uB, %3u-> Me->%3u",
-			QH_GetUnitIdx(Index),QH_GetUnitIdx(QH_GetNext(Index)),
-			LBit16((u32)pQHeap->Heap+QH_Unit2Byte(QH_GetUnitIdx(Index))),LBit16((u32)pQHeap->Heap+QH_Unit2Byte(QH_GetUnitIdx(QH_GetNext(Index)))),
-			QH_Unit2Byte(QH_GetUnitNum(Index)),
-			QH_GetPrev(Index),QH_GetNext(Index));
-#if Q_HEAP_TRACK_DEBUG
-		if(QH_GetMemIdle(Index)) Debug(", %s:%u",QH_GetCallerName(Index),QH_GetCallerLine(Index));
+#if Q_HEAP_DEBUG > 1
+		Debug("%8x<- %s Addr:%x - %05x p%x%c= %5uB ->%x %s:%u\n\r",pItem->pPrev,pItem->MemIsIdle?"[]":"XX",
+			(u32)pItem,((u32)pItem->Data+pItem->Bytes)&0xfffff,(u32)pItem->Data,pItem->AsynFree?'*':' ',
+			pItem->Bytes,pItem->pNext,pItem->pFunc,pItem->Line);
+#else
+		Debug("%8x<- %s Addr:%x - %05x p%x%c= %5uB ->%x\n\r",pItem->pPrev,pItem->MemIsIdle?"[]":"XX",
+			(u32)pItem,((u32)pItem->Data+pItem->Bytes)&0xfffff,(u32)pItem->Data,pItem->AsynFree?'*':' ',
+			pItem->Bytes,pItem->pNext);
 #endif
-		Debug("\n\r");
 
-		if(QH_GetNext(Index)==QH_RECORD_NULL) break;
-	}
+#if Q_HEAP_PROG_CHECK //检查链表指针准确性
+		if(p=pItem->pNext)
+		{
+			if(p->pPrev!=pItem) Debug("PrevPoint ERROR!\n\r");
+			if(((u32)(pItem->Data)+pItem->Bytes)!=(u32)p) Debug("- ADDR GAP -\n\r");
+		}
+#endif		
+		
+		pItem=pItem->pNext;
+	}	
 	Q_HEAP_EXIT_CRIT;
-	Debug("--------------Heap Record End--0x%08x---------\n\r",(u32)pQHeap->Heap+Q_HEAP_SIZE_BYTE);
+	Debug("Total Idle Memory %u Byts\n\r",QHeapGetIdleSize());
+	Debug("-------------------------------------------------------------------------\n\r\n\r");
 }
 
-//设置放堆栈冲毁标志
-void QS_SetAntRwFlag(void)
+//初始化
+static void QHeapInit(void)
 {
-
-}
-
-//检查堆栈头尾的防冲毁标志
-//返回true表示正常，未冲毁
-bool QS_CheckRwFlag(void)
-{
-
-	return TRUE;
-}
-
-//堆初始化
-void QS_HeapInit(void)
-{
-	u16 Index;
+	u16 m;
 	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
 
-	if( (QH_Unit2Byte(1)!=Q_HEAP_MINI_UNIT)||(QH_Byte2Unit(Q_HEAP_MINI_UNIT)!=1) )
-	{
-		Debug("Q_HEAP_MINI_UNIT & Q_HEAP_UNIT_OFFSET Marco Define Error!!!\n\r");
-		while(1);
-	}
-		
 	Q_HEAP_ENTER_CRIT;
-	for(Index=0;Index<QH_RECORD_MAX_NUM;Index++)
-	{
-		QH_CleanRecord(Index);
-	}
 
 	//定义堆地址
+	#if 1//各平台不同
 	{
-		extern char _heap_start;//_heap_start - 0x40000000
-		extern char _lit4_end;//_lit4_end - 0x4010C000 (iram)
-
-		pQHeap[0]=AlignTo8(&_heap_start);
-		*pQHeap[0]=Q_HEAP_REWRITE_ID;
-		pQHeap[0]+=8;
-		pQHeapEnd[0]=0x40000000;
+		pQHeap[0]=(void *)AlignTo4((u32)&_heap_start);
+		*pQHeap[0]++=Q_HEAP_RW_FLAG32;
+		pQHeapEnd[0]=(void *)0x40000000;
 		
-		pQHeap[1]=AlignTo8(&_lit4_end);
-		*pQHeap[1]=Q_HEAP_REWRITE_ID;
-		pQHeap[1]+=8;
-		pQHeapEnd[1]=0x4010C000;
+		pQHeap[1]=(void *)AlignTo4((u32)&_lit4_end);
+		*pQHeap[1]++=Q_HEAP_RW_FLAG32;
+		pQHeapEnd[1]=(void *)0x4010C000;
 	}
+	#endif
 
 	//建立记录
-	for(Index=QH_RECORD_START;Index<(QH_RECORD_START+QH_HEAP_MEM_NUM);Index++)
+	for(m=0;m<QH_HEAP_MEM_NUM;m++)
 	{
-		QH_SetPrev(Index,QH_RECORD_NULL);
-		if(Index==(QH_RECORD_START+QH_HEAP_MEM_NUM-1)) QH_SetNext(Index,QH_RECORD_NULL);
-		else QH_SetNext(Index,Index+1);
-		
-		QH_SetUnitIdx(Index,QH_Byte2Unit(pQHeap[Index]-pQHeap[0]));
-		QH_SetUnitNum(Index,QH_Byte2Unit(pQHeapEnd[Index]-pQHeap[Index]));
-		
-		QH_SetUsed(Index,TRUE);
-		QH_SetMemIdle(Index,TRUE);
-		
-#if Q_HEAP_TRACK_DEBUG
-		QH_SetCallerName(Index,"<Idle>");
-		QH_SetCallerLine(Index,0);
-#endif
+		QHEAP_ITEM *pItem=(void *)pQHeap[m];
+
+		pItem->RwFlag=Q_HEAP_RW_FLAG;
+		pItem->MemIsIdle=TRUE;
+		pItem->AsynFree=FALSE;
+		pItem->Bytes=(u32)pQHeapEnd[m]-(u32)pQHeap[m]-QH_ITEM_COMM_BYTES;//用移位运算，可能比实际空间小
+		pItem->pPrev=(m?pQHeap[m-1]:NULL);
+		pItem->pNext=((m==(QH_HEAP_MEM_NUM-1))?NULL:pQHeap[m+1]);
+		//MemSet(pItem->Data,0,pItem->Bytes);//esp调用memset函数跑飞，不知道为什么
+#if Q_HEAP_DEBUG > 1
+		pItem->pFunc="QHeapInit";
+		pItem->Line=0;
+#endif		
 	}
 
-	//建立冲内存检查的头标记
-	QS_SetAntRwFlag();
-	
-	//DebugHeap();
+	gpItemHdr=(void *)pQHeap[0];
+
+	//QHeapDebug();
+
 	Q_HEAP_EXIT_CRIT;
 }
 
-//插入一个存储块记录到记录表中
-//Index:将插入到此记录,
-//Index必须是个记录空内存的记录块
-static bool InsertRecord(u16 Index,u16 NeedUnit)
-{	
-	u16 n;
-
-	//QH_Debug("  ##Insert UnitNum %d @ Idx %d\n\r",NeedUnit,Index);
-
-	if(NeedUnit<QH_GetUnitNum(Index))//需要的空间小于空闲空间
-	{
-		//重新建立一个内存记录块
-		for(n=QH_RECORD_START;n<QH_RECORD_END;n++)
-		{
-			if(QH_GetUsed(n)==FALSE)//找到空的记录体
-			{
-				QH_SetUsed(n,TRUE);
-				QH_SetMemIdle(n,TRUE);			
-				
-				//设置新内存块，这是一个空闲块
-				QH_SetPrev(n,Index);//prev设置
-				QH_SetNext(n,QH_GetNext(Index));//next转移
-				QH_SetUnitIdx(n,QH_GetUnitIdx(Index)+NeedUnit);
-				QH_SetUnitNum(n,QH_GetUnitNum(Index)-NeedUnit);
-
-				//处理原本空闲的内存块之后的内存块
-				QH_SetPrev(QH_GetNext(Index),n);
-				
-				//处理要使用的内存块
-				QH_SetUnitNum(Index,NeedUnit);
-				QH_SetMemIdle(Index,FALSE);//标记使用标志
-				QH_SetNext(Index,n);//next转移
-				
-#if Need_Debug
-				//DebugHeap();
-#endif
-				return TRUE;
-			}
-		}
-		
-		if(n==QH_RECORD_END)
-		{
-			Debug("!!!Record Num is not enough!!!\n\r");
-		}
-		return FALSE;
-	}
-	else //如果需要插入的内存块和空闲内存块刚好相等
-	{
-		QH_SetMemIdle(Index,FALSE);//标记被使用
-		return TRUE;
-	}
-}
-
-//UnitIdx为起始单元索引，以HEAP_MINI_UNIT为单位
-//返回0表示错误，否则返回free的内存块大小
-#if Q_HEAP_TRACK_DEBUG
-static u16 DeleteRecord(u16 UnitIdx,u8 *pFuncName,u32 Lines)
-#else
-static u16 DeleteRecord(u16 UnitIdx)
-#endif
-{
-	u16 Index,Size=0;
-	u16 i;
-
-	//Debug("DeleteRecord Unit 0x%x\n\r",UnitIdx);
-
-	for(Index=QH_RECORD_START;;Index=QH_GetNext(Index))
-	{
-		if(QH_GetUsed()==TRUE && QH_GetUnitIdx(Index)==UnitIdx)//找到匹配项了
-		{
-#if Q_HEAP_TRACK_DEBUG > 1
-			Debug("##Free   Func:%s Line:%d (For %s %d)\n\r",pFuncName,Lines,QH_GetCallerName(Index),QH_GetCallerLine(Index));
-#endif
-
-#if Q_HEAP_TRACK_DEBUG
-			QH_SetCallerName(Index,"<Idle>");
-			QH_SetCallerLine(Index,0);
-#endif
-
-			if(QH_GetMemIdle(Index)==TRUE) break;//未使用的块，不能被free
-			
-			Size=QH_Unit2Byte(QH_GetUnitNum(Index));//获取内存块大小
-			
-			QH_SetMemIdle(Index,TRUE);//设置当前为未使用
-			
-			//先看前面一个是不是空的
-			i=QH_GetPrev(Index);
-			if(QH_GetMemIdle(i)==TRUE)//前面一个是空的，并且地址是连续的，合并前面一个
-			{
-				if(QH_GetUnitIdx(i)+QH_GetUnitNum(i) == QH_GetUnitIdx(Index))
-				{
-					QH_SetNext(i,QH_GetNext(Index));
-					QH_SetPrev(QH_GetNext(Index),i);
-					QH_CleanRecord(Index);		
-					Index=i;
-				}
-			}
-
-			//再看后面一个是不是空的
-			i=QH_GetNext(Index);
-			if(QH_GetMemIdle(i)==TRUE)//后面一个是空的，并且地址是连续的，和后面的合并
-			{
-				if(QH_GetUnitIdx(Index)+QH_GetUnitNum(Index) == QH_GetUnitIdx(i))
-				{
-					QH_SetNext(Index,QH_GetNext(i));
-					QH_SetPrev(QH_GetNext(i),Index);
-					QH_CleanRecord(i);
-				}
-			}
-
-#if Need_Debug
-			//DebugHeap();
-#endif
-			return Size;
-		}
-		
-		if(QH_GetNext(Index)==QH_RECORD_NULL) break;//到了最后一个块了，退出。
-	}
-
-	return 0;	
-}
-
-#if Q_HEAP_TRACK_DEBUG
-void *_Q_Malloc(u16 Size,u8 *pFuncName,u32 Lines)
-#else
-void *_Q_Malloc(u16 Size)
-#endif
-{
-	u16 UnitNum,Index,AttachBytes;
-	u16 *pMem=NULL;
-	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
-
-	if(QS_CheckRwFlag()==FALSE)
-	{
-		Debug("Heap Be Rewrite!\n\r");
-		while(1);
-	}
-	
-	if(Size==0) return NULL;
-
-	UnitNum=QH_Byte2Unit(Size);//计算要几个单元
-	
-	//多加一个单元，用来验证内存头尾是否被冲毁。
-	//如果Size本来就比最小单元的整数倍小2或者小3，就不用多余的一个单元了。
-	AttachBytes=Size&Q_HEAP_UNIT_MASK;
-	if(AttachBytes==0||(Q_HEAP_MINI_UNIT-AttachBytes)<2) UnitNum++;
-
-#if Q_HEAP_MINI_UNIT<8 //分配内存8字节对齐
-	//由于第一块内存已经被设置为8字节对齐地址，所以为了8字节对齐，每块分出去的内存大小都必须是8的倍数
-	if((UnitNum<<Q_HEAP_UNIT_OFFSET)&0x07)//筛选出未8字节对齐的
-	{
-		UnitNum++;//此处有个前提，就是必须内存单元的大小是4
-	}
-#endif
-
-	Q_HEAP_ENTER_CRIT;
-	for(Index=QH_RECORD_START;;Index=QH_GetNext(Index))//轮询记录表
-	{
-		if(QH_GetUsed(Index)==TRUE && QH_GetMemIdle(Index)==TRUE)//找到一个空闲的内存块
-		{
-			if(QH_GetUnitNum(Index)>=UnitNum)
-			{
-				if(InsertRecord(Index,UnitNum)==TRUE)
-				{
-					pMem=(void *)((u32)pQHeap[0]+QH_Unit2Byte(QH_GetUnitIdx(Index)));
-					pMem[(QH_Unit2Byte(UnitNum)>>1)-1]=Q_HEAP_UNIT_REWRITE_ID;//加到尾部的防冲毁标志
-					QH_Debug("##Malloc Size %d, Addr 0x%x,Unit 0x%x\n\r",QH_Unit2Byte(UnitNum),(u32)pMem,QH_GetUnitIdx(Index));
-#if Q_HEAP_TRACK_DEBUG
-					QH_SetCallerName(Index,pFuncName);
-					QH_SetCallerLine(Index,Lines);
-#endif
-
-#if Q_HEAP_TRACK_DEBUG > 1				
-					Debug("##Malloc Func:%s Line:%d\n\n\r",pFuncName,Lines);
-#endif
-					Q_HEAP_EXIT_CRIT;	
-					//Debug("  M[%x]%d\n\r\n\r",pMem,Size);
-
-					MemSet(pMem,0,Size);	//初始化归零				
-					return (void *)pMem;
-				}
-				else 
-					break;
-			}
-		}			
-		
-		if(QH_GetNext(Index)==QH_RECORD_NULL) 
-			break;
-	}
-	Q_HEAP_EXIT_CRIT;
-	
-	DebugHeap();
-	QS_MonitorFragment();
-	Debug("!!!No Get Heap,Size:%d!!!\n\r",Size);
-	return 0;
-//	OS_SchedLock();
-//	while(1);
-}
-
-#if Q_HEAP_TRACK_DEBUG
-bool _Q_Free(void *Ptr,u8 *pFuncName,u32 Lines)
-#else
-bool _Q_Free(void *Ptr)
-#endif
-{	
-	u16 *pMem=Ptr;
-	u16 Size;
-	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
-
-	if(Ptr==NULL) return TRUE;
-	
-	if(QS_CheckRwFlag()==FALSE)
-	{
-		Debug("Heap Be Rewrite!\n\r");
-		while(1);
-	}
-	//Debug("F[%x]\n\r",(u32)Ptr);
-	
-	if(Ptr)
-	{
-		Q_HEAP_ENTER_CRIT;
-
-#if Q_HEAP_TRACK_DEBUG
-		Size=DeleteRecord(QH_Byte2Unit((u32)Ptr-(u32)pQHeap[0]),pFuncName,Lines);
-#else
-		Size=DeleteRecord(QH_Byte2Unit((u32)Ptr-(u32)pQHeap[0]));
-#endif
-
-		//Debug("  F[%x]%d\n\r",Ptr,Size);
-		
-		if(Size==0)
-		{
-			Debug("##Free Error!!!Can not find the match memory!!!0x%x\n\r",(u32)Ptr);
-#if Q_HEAP_TRACK_DEBUG > 1
-			Debug("##Free   Func:%s Line:%d\n\r",pFuncName,Lines);
-#endif
-			//while(1);
-			Q_HEAP_EXIT_CRIT;
-			return FALSE;
-		}
-		else 
-		{
-			QH_Debug("##Free   Size %d, Addr 0x%x,Unit 0x%x\n\n\r",Size,(u32)Ptr,QH_Byte2Unit((u32)Ptr-(u32)pQHeap[0]));
-		}
-		
-		//检查内存冲毁情况
-		if(pMem[(Size>>1)-1]!=Q_HEAP_UNIT_REWRITE_ID)
-		{
-			Debug("Memory[%x] end be rewrited!!!Flag %x, Size %d\n\r",Ptr,pMem[(Size>>1)-1],Size);
-#if Q_HEAP_TRACK_DEBUG > 1
-			Debug("##Free   Func:%s Line:%d\n\r",pFuncName,Lines);
-#endif
-			DebugHeap();
-			while(1);
-			Q_HEAP_EXIT_CRIT;
-			return FALSE;
-		}
-
-		pMem--;
-		if(pMem[0]!=Q_HEAP_UNIT_REWRITE_ID)
-		{
-			Debug("Memory header be rewrited!!![%x]=%x\n\r",(u32)pMem,pMem[0]);
-#if Q_HEAP_TRACK_DEBUG > 1
-			Debug("##FuncName:%s Lines:%d\n\r",pFuncName,Lines);
-#endif
-			DebugHeap();
-			while(1);
-			Q_HEAP_EXIT_CRIT;
-			return FALSE;
-		}
-				
-		Q_HEAP_EXIT_CRIT;
-		return TRUE;
-	}
-	else
-		return FALSE;
-}
-
-#if 0
-#if Q_HEAP_TRACK_DEBUG
-void *_Q_Calloc(u16 Size,u8 *pFuncName,u32 Lines)
-#else
-void *_Q_Calloc(u16 Size)
-#endif
-{
-	void *p;
-#if Q_HEAP_TRACK_DEBUG
-	p = _Q_Malloc(Size,pFuncName,Lines);
-#else
-	p = _Q_Malloc(Size);
-#endif
-	if (p) 
-	{
-		MemSet(p, 0, Size);
-	}
-	return p;
-}
-#endif
-
-//用于内存碎片监控
-/*为了描述内存碎片有多少，引入了一个浮点数fragindices来描述它：
-fragindices被定义为：
-fragindices = (float)MaxSize/(float)TotalSize
-其中MaxSize表示堆中最大可分配的连续空闲内存大小
-TotalSize表示堆中所有空闲内存的总和
-可见当系统无碎片时fragindices = 1
-而当系统无内存可分配时fragindices = 0 
-fragindices越小表示碎片越多*/
-void QS_MonitorFragment(void)
-{
-	u16 Index,Size;
-	u32 MaxSize=0,TotalSize=0;
-	
-	for(Index=QH_RECORD_START;;Index=QH_GetNext(Index))
-	{ 
-		if(QH_GetMemIdle(Index)==TRUE)
-		{
-			Size=QH_Unit2Byte(QH_GetUnitNum(Index));//获取内存块大小
-			TotalSize+=Size;
-			if(Size>MaxSize)
-				MaxSize=Size;
-		}
-		if(QH_GetNext(Index)==QH_RECORD_NULL) break;
-	}
-
-	Debug("********** Heap Monitor **********\n\r");
-	Debug(" TotalFreeMem=%d Byte\n\r",TotalSize);
-	Debug(" MaxFreeMem=%d Byte\n\r",MaxSize);
-	Debug(" Fragindices=%u.%02uf\n\r",MaxSize/TotalSize,MaxSize*100/TotalSize%100);
-	Debug("**********************************\n\r");
-}
-
-//用于整理内存碎片
-bool QS_HeapArrange(void)
-{//unfinish
-	return TRUE;
-}
-
-//检查该地址是否属于堆空间
-bool IsHeapRam(void *ptr)
+//检查冲毁标志
+static bool _CheckRwFlag(void)
 {
 	u16 i;
 
 	for(i=0;i<QH_HEAP_MEM_NUM;i++)
 	{
-		if(((u32)ptr>=(u32)&pQHeap[i]) && ((u32)ptr<&pQHeapEnd[i])) return TRUE;
+		u32 *p=pQHeap[i];
+		
+		if(*--p != Q_HEAP_RW_FLAG32) return FALSE;
+	}
+
+	return TRUE;
+}
+
+//征用一个块
+static void *_RequItem(QHEAP_ITEM *pItem,u32 Size)
+{
+	if((Size+QH_ITEM_MIN_OCCUPY) <= pItem->Bytes)//剩下的空间足够大，新建一个
+	{
+		QHEAP_ITEM *pNew=NULL;
+		QHEAP_ITEM *pNext=NULL;
+
+		//新建一个空闲块，加到原有item的后面
+		pNew=(void *)&pItem->Data[Size>>1];	
+		pNew->RwFlag=Q_HEAP_RW_FLAG;
+		pNew->MemIsIdle=TRUE;
+		pNew->AsynFree=FALSE;
+		pNew->Bytes=pItem->Bytes-Size-QH_ITEM_COMM_BYTES;
+		pNew->pPrev=pItem;
+		pNew->pNext=pItem->pNext;
+#if Q_HEAP_DEBUG > 1	
+		pNew->pFunc="Idle";
+		pNew->Line=0;
+#endif
+		//处理旧的并返回
+		pNext=pItem->pNext;
+		if(pNext) pNext->pPrev=pNew;
+		
+		pItem->MemIsIdle=FALSE;
+		pItem->AsynFree=FALSE;
+		pItem->Bytes=Size;
+		pItem->pNext=pNew;
+		pItem->Data[(pItem->Bytes>>1)-1]=Q_HEAP_RW_FLAG;
+		
+		return pItem->Data;
+	}
+	else//剩下的空间不够大，所以无需新建了，直接用完
+	{
+		pItem->MemIsIdle=FALSE;
+		pItem->AsynFree=FALSE;
+		pItem->Data[(pItem->Bytes>>1)-1]=Q_HEAP_RW_FLAG;
+		return pItem->Data;
+	}
+}
+
+//释放一个块
+static void _ReleseItem(QHEAP_ITEM *pItem)
+{
+	QHEAP_ITEM *pNext;
+	QHEAP_ITEM *pPrev;
+	bool HasMerge=FALSE;
+
+	pItem->MemIsIdle=TRUE;
+	pItem->AsynFree=FALSE;
+	
+#if Q_HEAP_DEBUG > 1	
+	pItem->pFunc="Idle";
+	pItem->Line=0;
+#endif
+
+	//查看后面一个块是不是为空闲
+	pNext=pItem->pNext;
+	if(pNext && pNext->MemIsIdle==TRUE)
+	{
+		if(((u32)pItem->Data+pItem->Bytes) == (u32)pNext)//地址是连续的，进行合并
+		{
+			pItem->MemIsIdle=TRUE;
+			pItem->AsynFree=FALSE;
+			pItem->Bytes+=(QH_ITEM_COMM_BYTES+pNext->Bytes);
+			pItem->pNext=pNext->pNext;
+
+			pNext=pItem->pNext;
+			if(pNext) pNext->pPrev=pItem;
+		}
+	}
+
+	//查看前面一个块是不是为空闲
+	pPrev=pItem->pPrev;
+	if(pPrev && pPrev->MemIsIdle==TRUE)
+	{
+		if(((u32)pPrev->Data+pPrev->Bytes) == (u32)pItem)//地址是连续的，进行合并
+		{
+			pPrev->Bytes+=(QH_ITEM_COMM_BYTES+pItem->Bytes);
+			pPrev->pNext=pItem->pNext;
+
+			pItem=pPrev->pNext;
+			if(pItem) pItem->pPrev=pPrev;
+			
+			pItem=pPrev;
+		}
+	}
+
+	//MemSet(pItem->Data,0,pItem->Bytes);//保证下一次分配出去的也是0
+}
+
+#if Q_HEAP_DEBUG > 1
+void *_Q_Malloc(u16 Size,const char *pFuncCaller,u32 Line)
+#else
+void *_Q_Malloc(u16 Size)
+#endif
+{
+	static bool IsFirst=TRUE;
+	QHEAP_ITEM *pItem=NULL;
+	u16 *pMem=NULL;
+	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
+
+	if(IsFirst)
+	{
+		QHeapInit();
+		IsFirst=FALSE;
+	}
+
+	if(Size==0) return NULL;
+
+	Q_HEAP_ENTER_CRIT;	
+	if(_CheckRwFlag()==FALSE)//检查前后防冲毁标志
+	{
+		Debug("Heap RwFlag Error!\n\r");
+		while(1);
+	}
+
+	//计算需求的实际大小
+	Size=AlignTo4(Size+2);//加上尾部校验
+
+#if Q_HEAP_DEBUG >1 
+	QH_Debug("# Malco %3uB From %s:%u   ",Size,pFuncCaller,Line);
+#else
+	QH_Debug("# Malco %3uB   ",Size);
+#endif
+
+	//找合适的块
+	pItem=gpItemHdr;
+	while(pItem)
+	{
+		if(pItem->RwFlag!=Q_HEAP_RW_FLAG)
+		{
+			Debug("Heap Hd Rw!\n\r");
+			while(1);
+		}
+
+		if(pItem->MemIsIdle==FALSE && pItem->Data[(pItem->Bytes>>1)-1]!=Q_HEAP_RW_FLAG)
+		{
+			Debug("Heap End Rw!\n\r");
+			while(1);
+		}
+
+		if(pItem->MemIsIdle && pItem->Bytes>=Size)//找到空闲块，必须大于等于申请大小
+		{
+			pMem=_RequItem(pItem,Size);//征用一个块
+			MemSet(pItem->Data,0,pItem->Bytes-2);//尾部预留防冲毁
+			
+#if Q_HEAP_DEBUG > 1
+			pItem->pFunc=pFuncCaller;
+			pItem->Line=Line;
+#endif
+
+#if Q_HEAP_PROG_CHECK //检查是不是都0，检查标志
+			{
+				u16 i;
+
+				if(pItem->Bytes < Size)
+				{
+					Debug("Malloc %uB size error\n\r",Size);
+					while(1);
+				}
+
+				for(i=0;i<((pItem->Bytes>>1)-1);i++)
+				{
+					if(pMem[i]!=0) 
+					{
+						Debug("Malloc %uB not init 0\n\r",Size);
+						while(1);
+					}
+				}
+
+				if(pMem[(pItem->Bytes>>1)-1]!=Q_HEAP_RW_FLAG)//检查尾部防冲毁
+				{
+					Debug("Malloc %uB rwflag error\n\r",Size);
+					QHeapDebug();
+					while(1);
+				}
+			}
+#endif
+
+			Q_HEAP_EXIT_CRIT;
+			QH_Debug("p%x\n\r",pMem);
+			return pMem;
+		}
+
+		pItem=pItem->pNext;
+	}	
+	Q_HEAP_EXIT_CRIT;
+
+	Debug("!!!No Get Heap,Size:%d!!!\n\r",Size);
+	QHeapDebug();
+	return NULL;
+}
+
+#if Q_HEAP_DEBUG > 1
+void *_Q_MallocAsyn(u16 Size,const char *pFuncCaller,u32 Line)
+#else
+void *_Q_MallocAsyn(u16 Size)
+#endif
+{
+	void *pMem=NULL;
+	
+#if Q_HEAP_DEBUG > 1
+	pMem=_Q_Malloc(Size,pFuncCaller,Line);
+#else
+	pMem=_Q_Malloc(Size);
+#endif
+
+	if(pMem!=NULL)
+	{
+		QHEAP_ITEM *pItem=(void *)((u32)pMem-QH_ITEM_COMM_BYTES);
+		pItem->AsynFree=TRUE;
+	}
+
+	return pMem;
+}
+
+#if Q_HEAP_DEBUG > 1
+void _Q_Free(void *pMem,const char *pFuncName,u32 Line)
+#else
+void _Q_Free(void *pMem)
+#endif
+{
+	QHEAP_ITEM *pItem=NULL;
+	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
+
+	if(pMem==NULL) return;
+	if(IsHeapRam(pMem)==FALSE) return;
+	
+	Q_HEAP_ENTER_CRIT;
+	if(_CheckRwFlag()==FALSE)//检查前后防冲毁标志
+	{
+		Debug("Heap Free RwFlag Error!\n\r");
+		QHeapDebug();
+		while(1);
+	}
+
+	pItem=(void *)((u32)pMem-QH_ITEM_COMM_BYTES);
+
+#if Q_HEAP_DEBUG >1 
+	QH_Debug("# Free  %3uB %s:%u For %s:%u   p%x\n\r",pItem->Bytes,pFuncName,Line,pItem->pFunc,pItem->Line,pMem);
+#else
+	QH_Debug("# Free  %3uB   p%x\n\r",pItem->Bytes,pMem);
+#endif
+
+	if(pItem->RwFlag!=Q_HEAP_RW_FLAG)//检查头部防冲毁
+	{
+		Debug("Heap Free %uB Hd Rw!\n\r",pItem->Bytes);
+		QHeapDebug();
+		while(1);
+	}
+	
+	if(pItem->MemIsIdle!=FALSE)
+	{
+		Debug("Heap Free %uB Idle error\n\r",pItem->Bytes);
+		QHeapDebug();
+		while(1);
+	}
+	
+	if(pItem->Data[(pItem->Bytes>>1)-1]!=Q_HEAP_RW_FLAG)//检查尾部防冲毁
+	{
+		Debug("Heap Free %uB End Rw!\n\r",pItem->Bytes);
+		QHeapDebug();
+		while(1);
+	}
+
+	_ReleseItem(pItem);
+
+	Q_HEAP_EXIT_CRIT;
+}
+
+//为内存段设置调试名称
+void QHeapMemSetName(void *pMem,const char *pName)
+{
+#if Q_HEAP_DEBUG > 1
+	QHEAP_ITEM *pItem=NULL;
+	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
+	
+	if(pMem==NULL) return;
+	if(IsHeapRam(pMem)==FALSE) return;
+	
+	//往前找item头
+	pMem=(void *)AlignTo4((u32)pMem);
+	
+	Q_HEAP_ENTER_CRIT;
+	{
+		u16 *p=pMem;
+
+FindHd:
+		while(*p!=Q_HEAP_RW_FLAG) p--;
+
+		pItem=(void *)p;
+		if(pItem->MemIsIdle!=FALSE){p--;goto FindHd;}
+		if(pItem->Data[(pItem->Bytes>>1)-1]!=Q_HEAP_RW_FLAG){p--;goto FindHd;}
+
+		pItem->pFunc=pName;
+	}
+	Q_HEAP_EXIT_CRIT;
+#else 
+	return;
+#endif
+}
+
+//获取空闲空间
+u32 QHeapGetIdleSize(void)
+{
+	QHEAP_ITEM *pItem=NULL;
+	u32 TotalBytes=0;
+	Q_HEAP_CRIT_SAVE_DATA_DEFINE;
+
+	Q_HEAP_ENTER_CRIT;
+	pItem=gpItemHdr;
+	while(pItem)
+	{
+		if(pItem->MemIsIdle) TotalBytes+=pItem->Bytes;
+		
+		pItem=pItem->pNext;
+	}	
+	Q_HEAP_EXIT_CRIT;
+	
+	return TotalBytes;
+}
+
+//检查该地址是否属于堆空间
+bool IsHeapRam(void *pMem)
+{
+	u16 i;
+
+	for(i=0;i<QH_HEAP_MEM_NUM;i++)
+	{
+		if(((u32)pMem>=(u32)pQHeap[i]) && ((u32)pMem<(u32)pQHeapEnd[i])) return TRUE;
 	}
 	
 	return FALSE;
 }
 
 
+
+
+
+
+#else //for #if USE_Q_HEAP 
+void QHeapMemSetName(void *pMem,const char *pName)
+{
+	return;
+}
+
+//堆实体
+extern char _heap_start; //_heap_start - 0x40000000
+extern char _lit4_end; //_lit4_end - 0x4010C000 iram
+bool IsHeapRam(void *pMem)
+{
+	if(((u32)pMem>=(u32)&_heap_start) && ((u32)pMem<(u32)0x40000000)) return TRUE;
+	if(((u32)pMem>=(u32)&_lit4_end) && ((u32)pMem<(u32)0x4010C000)) return TRUE;
+	
+	
+	return FALSE;
+}
+
+
+
+
+
+
+#endif

@@ -75,7 +75,7 @@ void user_init(void)
 	uart_init_new();
 	PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U,FUNC_GPIO1);//此处废弃tx0，可以避免更多系统打印输出，当作普通gpio
 	UART_SetPrintPort(UART1);//将系统默认的打印信息转移到com1
-
+	
 	Debug("\033[2J\n\r\n\r\n\r");
 	Debug("System Reset Info:%d\n\r",system_get_rst_info()->reason);
 	Debug("QWIFI START\n\rSDK version:%s\n\r", system_get_sdk_version());   

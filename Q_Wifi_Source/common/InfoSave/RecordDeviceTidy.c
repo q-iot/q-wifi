@@ -4,7 +4,7 @@
 //启动的时候调用一次，会删掉冗余dev key记录
 void DevRecordTidy(void)
 {
-	DEVICE_RECORD *pDev=(void *)Q_Malloc(sizeof(DEVICE_RECORD));
+	DEVICE_RECORD *pDev=(void *)Q_Zalloc(sizeof(DEVICE_RECORD));
 	KEYS_SET_DEV *pKeysSet=&(pDev->Record.KeysSet);
 	INFO_IDX Idx=1;
 	u16 Res=1;

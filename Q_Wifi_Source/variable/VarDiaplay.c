@@ -9,8 +9,8 @@ static u8 DispIndex=0;//记录显示序号
 void VarDisplay_Cb(int n,void *p)//n传入屏显变量序号，从0开始
 {
 	GUI_REGION Region={0,0,LCD_WIDTH,LCD_HIGHT,0x00};
-	u8 *pName=Q_Malloc(64);
-	u8 *pLine2=Q_Malloc(64);
+	u8 *pName=Q_Zalloc(64);
+	u8 *pLine2=Q_Zalloc(64);
 	u16 Vid;
 	TVAR32 Value;
 	VAR_STATE State;
@@ -63,8 +63,8 @@ void VarDisplay_Cb(int n,void *p)//n传入屏显变量序号，从0开始
 void OledDisplayLoop(void)
 {
 	GUI_REGION Region={0,0,LCD_WIDTH,LCD_HIGHT,0x00};
-	u8 *pLine1=Q_Malloc(64);
-	u8 *pLine2=Q_Malloc(64);
+	u8 *pLine1=Q_Zalloc(64);
+	u8 *pLine2=Q_Zalloc(64);
 
 Handle:
 	switch(DispIndex)
@@ -75,7 +75,7 @@ Handle:
 			break;
 		case 1:
 			{
-				struct station_config *pConfig=Q_Malloc(sizeof(struct station_config));
+				struct station_config *pConfig=Q_Zalloc(sizeof(struct station_config));
 				wifi_station_get_config_default(pConfig);								
 				sprintf(pLine1,"Link SSID:");
 				sprintf(pLine2,"%s",pConfig->ssid);

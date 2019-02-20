@@ -30,7 +30,7 @@ static void SrvConnTask_WaitRecv(NET_CONN_T *SrvConn,IP_ADDR *pServerIp,u16 Serv
 				if(NetBuf->p->tot_len)
 				{
 					u16 MallocLen=NetBuf->p->tot_len+TailLen;
-					u8 *pData=Q_Malloc(MallocLen>PKT_MAX_DATA_LEN?MallocLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
+					u8 *pData=Q_Zalloc(MallocLen>PKT_MAX_DATA_LEN?MallocLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
 					u32 RecvLen=TailLen;
 
 					if(TailLen && pTail!=NULL)
@@ -65,7 +65,7 @@ RecvHandle:
 					{
 						TailLen=RecvLen-pHeader[0];//多收的长度
 						RecvLen=pHeader[0];//方便后面使用
-						pTail=Q_Malloc(TailLen);
+						pTail=Q_Zalloc(TailLen);
 						MemCpy(pTail,&pData[pHeader[0]],TailLen);//拷贝多余的部分
 						MemSet(&pData[pHeader[0]],0,TailLen);
 					}
@@ -108,7 +108,7 @@ RecvFinish:
 
 					if(TailLen && pTail!=NULL && (*(u16 *)pTail)<=TailLen) //多余的数据，可以形成一个包
 					{
-						pData=Q_Malloc(TailLen>PKT_MAX_DATA_LEN?TailLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
+						pData=Q_Zalloc(TailLen>PKT_MAX_DATA_LEN?TailLen:PKT_MAX_DATA_LEN);//多申请一点，防止溢出
 						RecvLen=TailLen;
 						
 						MemCpy(pData,pTail,TailLen);//拷贝上次多余
@@ -146,7 +146,7 @@ static void SrvConnTask(void *arg)
 
 	//通过DNS找寻服务器ip
   	{
-		char *pURL=Q_Malloc(NORMAL_STR_BYTES);
+		char *pURL=Q_Zalloc(NORMAL_STR_BYTES);
 		char *pPort=NULL;
 		
 		QDB_GetStr(SDN_SYS,SIN_ServerURL,pURL);//读取服务器地址
@@ -191,7 +191,7 @@ static void SrvConnTask(void *arg)
 
 Restart:
 	OS_TaskDelayMs(SRV_FAILD_RETRY_MS); //延时等待重试	
-	if(SysVars()->SrvSecretKey) sys_thread_new("SrvConn   ",SrvConnTask,NULL,512,TASK_TCP_CLIENT_PRIO);//重新建立线程，如果由于登陆回包不正确，则SysVars()->SrvSecretKey会被板卡设置为0，则停止连接
+	if(SysVars()->SrvSecretKey) sys_thread_new("SrvConn   ",SrvConnTask,NULL,400,TASK_TCP_CLIENT_PRIO);//重新建立线程，如果由于登陆回包不正确，则SysVars()->SrvSecretKey会被板卡设置为0，则停止连接
 	OS_TaskDelete(NULL);//删除线程自己    
 }  
 
@@ -202,7 +202,7 @@ void TcpClient_Init(void)
 
 	if(OnlyFlag)
 	{
-		sys_thread_new("SrvConn   ",SrvConnTask,NULL,512,TASK_TCP_CLIENT_PRIO);
+		sys_thread_new("SrvConn   ",SrvConnTask,NULL,400,TASK_TCP_CLIENT_PRIO);
 		OnlyFlag=FALSE;
 	}	
 }
