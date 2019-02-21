@@ -1,5 +1,7 @@
 # Q-Wifi
-本项目是酷享物联平台在ESP8266上的移植，编译后的固件可直接烧录到ESP8266中使用：
+本项目是酷享物联平台固件在ESP8266上的移植，基于ESP8266_RTOS_SDK开发，编译时需要引入q-iot下的ESP SDK：https://github.com/q-iot/ESP8266_RTOS_SDK
+
+编译后的固件可直接烧录到ESP8266中使用，编译及使用问题可到酷物联论坛发帖：http://q-iot.cn/group/2
 
 固件及APP下载：https://q-iot.cn/group/2/thread/4
 
